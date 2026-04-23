@@ -60,18 +60,21 @@ export class AuthService {
       expiresAt: getOTPExpiry(ENV.OTP_EXPIRES_IN_MINUTES),
     });
 
-    if (ENV.NODE_ENV === "development") {
-      console.log(`\n=============================`);
-      console.log(`📧 OTP for ${user.email}: ${otp}`);
-      console.log(`=============================\n`);
-      return; // Skip actual email sending in development
-    }
+    console.log(`\n=============================`);
+    console.log(`📧 OTP for ${user.email}: ${otp}`);
+    console.log(`=============================\n`);
 
-    await sendEmail(
-      user.email,
-      "Verify Your Email - Larissa",
-      otpEmailTemplate(otp, user.firstName)
-    );
+    if (ENV.NODE_ENV === "development") return;
+
+    try {
+      await sendEmail(
+        user.email,
+        "Verify Your Email - Larissa",
+        otpEmailTemplate(otp, user.firstName)
+      );
+    } catch (emailError) {
+      console.error(`Email sending failed for ${user.email}:`, emailError);
+    }
   }
 
   async verifyEmail(email: string, otp: string) {
@@ -187,18 +190,22 @@ export class AuthService {
       expiresAt: getOTPExpiry(ENV.OTP_EXPIRES_IN_MINUTES),
     });
 
-    if (ENV.NODE_ENV === "development") {
-      console.log(`\n=============================`);
-      console.log(`🔑 Password Reset OTP for ${email}: ${otp}`);
-      console.log(`=============================\n`);
-      return { message: "If this email exists, a reset code has been sent" };
+    console.log(`\n=============================`);
+    console.log(`🔑 Password Reset OTP for ${email}: ${otp}`);
+    console.log(`=============================\n`);
+
+    if (ENV.NODE_ENV !== "development") {
+      try {
+        await sendEmail(
+          email,
+          "Password Reset Code - Larissa",
+          resetPasswordEmailTemplate(otp, user.firstName)
+        );
+      } catch (emailError) {
+        console.error(`Password reset email failed for ${email}:`, emailError);
+      }
     }
 
-    await sendEmail(
-      email,
-      "Password Reset Code - Larissa",
-      resetPasswordEmailTemplate(otp, user.firstName)
-    );
     return { message: "If this email exists, a reset code has been sent" };
   }
 
