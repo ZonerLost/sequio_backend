@@ -169,4 +169,9 @@ export class ReviewService {
 
     return pending.filter(Boolean);
   }
+
+  async getAllReviews(page = 1, limit = 10) {
+    const { reviews, total } = await reviewRepo.findAll(page, limit);
+    return { reviews, pagination: buildPagination(total, page, limit) };
+  }
 }

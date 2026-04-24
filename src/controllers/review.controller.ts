@@ -54,4 +54,15 @@ export class ReviewController {
       sendSuccess(res, "Pending reviews retrieved", pending);
     } catch (err) { next(err); }
   }
+
+  async getAllReviews(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page, limit } = req.query;
+      const result = await reviewService.getAllReviews(
+        Number(page) || 1,
+        Number(limit) || 10
+      );
+      sendSuccess(res, "Reviews retrieved", result.reviews, 200, result.pagination);
+    } catch (err) { next(err); }
+  }
 }

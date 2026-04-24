@@ -102,4 +102,22 @@ export class ReviewRepository {
       total: result[0].total,
     };
   }
+
+  async findAll(
+    page = 1,
+    limit = 10
+  ): Promise<{ reviews: IReview[]; total: number }> {
+    const [reviews, total] = await Promise.all([
+      ReviewModel.find()
+        .populate("reviewer", "firstName lastName profilePhoto")
+        .populate("reviewee", "firstName lastName profilePhoto")
+        .populate("item", "title photos")
+        .populate("booking", "startDate endDate")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      ReviewModel.countDocuments(),
+    ]);
+    return { reviews, total };
+  }
 }

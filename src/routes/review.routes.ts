@@ -12,6 +12,7 @@ router.get("/item/:itemId", validate(reviewQuerySchema, "query"), ctrl.getItemRe
 
 router.use(authenticate);
 
+router.get("/admin/all", validate(reviewQuerySchema, "query"), ctrl.getAllReviews.bind(ctrl)); 
 router.post("/", validate(createReviewSchema), ctrl.submitReview.bind(ctrl));
 router.get("/my", validate(reviewQuerySchema, "query"), ctrl.getMyReviews.bind(ctrl));
 router.get("/pending", ctrl.getPendingReviews.bind(ctrl));
