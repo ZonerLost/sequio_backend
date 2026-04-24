@@ -118,3 +118,25 @@
  *       200:
  *         description: Pending reviews retrieved
  */
+
+/**
+ * @swagger
+ * /reviews/admin/all:
+ *   get:
+ *     summary: Get all reviews (admin only)
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *     responses:
+ *       200:
+ *         description: Reviews retrieved
+ *       401:
+ *         description: Unauthorized
+ */
