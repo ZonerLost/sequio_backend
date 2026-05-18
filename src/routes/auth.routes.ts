@@ -10,6 +10,7 @@ import {
   resetPasswordSchema,
   googleAuthSchema,
   refreshTokenSchema,
+  changePasswordSchema,
 } from "../validators/auth.validator";
 
 const router = Router();
@@ -23,6 +24,7 @@ router.post("/google", validate(googleAuthSchema), ctrl.googleLogin.bind(ctrl));
 router.post("/forgot-password", validate(forgotPasswordSchema), ctrl.forgotPassword.bind(ctrl));
 router.post("/reset-password", validate(resetPasswordSchema), ctrl.resetPassword.bind(ctrl));
 router.post("/refresh-token", validate(refreshTokenSchema), ctrl.refreshToken.bind(ctrl));
+router.post("/change-password", authenticate, validate(changePasswordSchema), ctrl.changePassword.bind(ctrl));
 router.post("/logout", authenticate, ctrl.logout.bind(ctrl));
 
 export default router;

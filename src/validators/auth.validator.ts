@@ -58,3 +58,15 @@ export const googleAuthSchema = Joi.object({
 export const refreshTokenSchema = Joi.object({
   refreshToken: Joi.string().required(),
 });
+
+export const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().required(),
+  newPassword: Joi.string()
+    .min(8)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .required()
+    .messages({
+      "string.min": "Password must be at least 8 characters",
+      "string.pattern.base": "Password must contain uppercase, lowercase and number",
+    }),
+});

@@ -58,6 +58,15 @@ export class AuthController {
     } catch (err) { next(err); }
   }
 
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const userId = (req as any).user.userId;
+      const result = await authService.changePassword(userId, currentPassword, newPassword);
+      sendSuccess(res, result.message);
+    } catch (err) { next(err); }
+  }
+
   async refreshToken(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await authService.refreshTokens(req.body.refreshToken);

@@ -172,6 +172,35 @@
  *       200:
  *         description: New tokens generated
  *
+ * /auth/change-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Change password (authenticated users only)
+ *     description: Changes the password for the currently logged-in user. Requires access token. No OTP needed.
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword]
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 example: "OldPass@123"
+ *               newPassword:
+ *                 type: string
+ *                 example: "NewPass@456"
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Current password is incorrect
+ *       401:
+ *         description: Unauthorized
+ *
  * /auth/logout:
  *   post:
  *     tags: [Auth]

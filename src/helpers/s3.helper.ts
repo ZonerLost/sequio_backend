@@ -23,6 +23,7 @@ export const uploadToS3 = async (
     Key: key,
     Body: fileBuffer,
     ContentType: mimeType,
+    ACL: "public-read",
   });
   await s3Client.send(command);
   return `https://${ENV.AWS_S3_BUCKET}.s3.${ENV.AWS_REGION}.amazonaws.com/${key}`;

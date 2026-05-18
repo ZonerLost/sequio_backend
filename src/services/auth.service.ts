@@ -230,6 +230,17 @@ export class AuthService {
     return { message: "Password reset successfully. Please login again." };
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await userRepo.findById(userId, true);
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+
+    const isValid = await user.comparePassword(currentPassword);
+    if (!isValid) throw new AppError("Current password is incorrect", HTTP_STATUS.BAD_REQUEST);
+
+    await userRepo.updateById(userId, { password: newPassword });
+    return { message: "Password changed successfully" };
+  }
+
   async refreshTokens(refreshToken: string) {
     const payload = verifyRefreshToken(refreshToken);
     const tokenRecord = await RefreshTokenModel.findOne({
