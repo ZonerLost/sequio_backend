@@ -13,8 +13,9 @@ import {
   resetPasswordEmailTemplate,
 } from "../helpers/email.helper";
 import { AppError } from "../middleware/error.middleware";
-import { HTTP_STATUS } from "../config/constants";
+import { HTTP_STATUS, CONSTANTS } from "../config/constants";
 import { ENV } from "../config/env";
+import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import { IUser } from "../types";
 
@@ -222,7 +223,8 @@ export class AuthService {
       throw new AppError("Invalid or expired OTP", HTTP_STATUS.BAD_REQUEST);
 
     await otpRepo.markUsed(otpRecord._id.toString());
-    await userRepo.updateById(user._id.toString(), { password: newPassword });
+    const hashed = await bcrypt.hash(newPassword, CONSTANTS.BCRYPT_ROUNDS);
+    await userRepo.updateById(user._id.toString(), { password: hashed });
     await RefreshTokenModel.updateMany(
       { userId: user._id },
       { isRevoked: true }
@@ -237,7 +239,8 @@ export class AuthService {
     const isValid = await user.comparePassword(currentPassword);
     if (!isValid) throw new AppError("Current password is incorrect", HTTP_STATUS.BAD_REQUEST);
 
-    await userRepo.updateById(userId, { password: newPassword });
+    const hashed = await bcrypt.hash(newPassword, CONSTANTS.BCRYPT_ROUNDS);
+    await userRepo.updateById(userId, { password: hashed });
     return { message: "Password changed successfully" };
   }
 
