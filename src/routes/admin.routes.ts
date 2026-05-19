@@ -38,9 +38,11 @@ router.get("/stats", ...adminGuard, ctrl.getPlatformStats.bind(ctrl));
 // ── Users ─────────────────────────────────────────────────
 router.get("/users", ...adminGuard, validate(querySchema, "query"), ctrl.getUsers.bind(ctrl));
 router.get("/users/:id", ...adminGuard, ctrl.getUserById.bind(ctrl));
+router.get("/users/:id/identity-doc", ...adminGuard, ctrl.getIdentityDoc.bind(ctrl));
 router.put("/users/:id/role", ...adminGuard, validate(roleSchema), ctrl.updateUserRole.bind(ctrl));
 router.put("/users/:id/ban", ...adminGuard, ctrl.banUser.bind(ctrl));
 router.put("/users/:id/unban", ...adminGuard, ctrl.unbanUser.bind(ctrl));
+router.put("/users/:id/verify-identity", ...adminGuard, ctrl.verifyIdentity.bind(ctrl));
 router.delete("/users/:id", ...adminGuard, ctrl.deleteUser.bind(ctrl));
 
 // ── Items ─────────────────────────────────────────────────

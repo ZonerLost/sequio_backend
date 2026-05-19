@@ -103,6 +103,66 @@
 
 /**
  * @swagger
+ * /admin/users/{id}/identity-doc:
+ *   get:
+ *     summary: Get pre-signed URL to view user's identity document
+ *     description: Returns a temporary URL (15 min) to view the private identity document stored in S3. Admin only.
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Signed URL generated
+ *         content:
+ *           application/json:
+ *             example:
+ *               data:
+ *                 signedUrl: "https://zonerlost-media.s3.amazonaws.com/identity-docs/abc.png?X-Amz-Expires=900&..."
+ *                 expiresInSeconds: 900
+ *       404:
+ *         description: User not found or no document uploaded
+ *
+ * /admin/users/{id}/verify-identity:
+ *   put:
+ *     summary: Approve or reject a user's identity verification
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [action]
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [approve, reject]
+ *                 example: approve
+ *     responses:
+ *       200:
+ *         description: Identity approved or rejected
+ *       400:
+ *         description: Invalid action
+ *       404:
+ *         description: User not found
+ */
+
+/**
+ * @swagger
  * /admin/users/{id}/ban:
  *   put:
  *     summary: Ban a user

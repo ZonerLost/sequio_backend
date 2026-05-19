@@ -2,7 +2,9 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
 import { ENV } from "../config/env";
 
@@ -23,10 +25,22 @@ export const uploadToS3 = async (
     Key: key,
     Body: fileBuffer,
     ContentType: mimeType,
-    ACL: "public-read",
   });
   await s3Client.send(command);
   return `https://${ENV.AWS_S3_BUCKET}.s3.${ENV.AWS_REGION}.amazonaws.com/${key}`;
+};
+
+export const getPresignedUrl = async (
+  fileUrl: string,
+  expiresInSeconds: number = 900
+): Promise<string> => {
+  const key = fileUrl.split(".amazonaws.com/")[1];
+  if (!key) throw new Error("Invalid S3 URL");
+  const command = new GetObjectCommand({
+    Bucket: ENV.AWS_S3_BUCKET,
+    Key: key,
+  });
+  return getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
 };
 
 export const deleteFromS3 = async (fileUrl: string): Promise<void> => {

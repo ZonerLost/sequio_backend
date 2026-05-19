@@ -1,4 +1,5 @@
 import { UserModel } from "../models/user.model";
+import { getPresignedUrl } from "../helpers/s3.helper";
 import { ItemModel } from "../models/item.model";
 import { BookingModel } from "../models/booking.model";
 import { PaymentModel } from "../models/payment.model";
@@ -73,6 +74,25 @@ export class AdminService {
     const user = await UserModel.findByIdAndUpdate(
       userId,
       { isBanned: false, isActive: true },
+      { new: true }
+    ).select("-password");
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+    return user;
+  }
+
+  async getIdentityDoc(userId: string) {
+    const user = await UserModel.findById(userId).select("identityDocument firstName lastName");
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+    if (!user.identityDocument)
+      throw new AppError("No identity document uploaded", HTTP_STATUS.NOT_FOUND);
+    const signedUrl = await getPresignedUrl(user.identityDocument, 900);
+    return { signedUrl, expiresInSeconds: 900 };
+  }
+
+  async verifyIdentity(userId: string, action: "approve" | "reject") {
+    const user = await UserModel.findByIdAndUpdate(
+      userId,
+      { isIdentityVerified: action === "approve" },
       { new: true }
     ).select("-password");
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);

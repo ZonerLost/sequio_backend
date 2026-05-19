@@ -52,6 +52,25 @@ export class AdminController {
     } catch (err) { next(err); }
   }
 
+  async getIdentityDoc(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await adminService.getIdentityDoc(String(req.params.id));
+      sendSuccess(res, "Identity document URL generated", result);
+    } catch (err) { next(err); }
+  }
+
+  async verifyIdentity(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { action } = req.body;
+      if (!["approve", "reject"].includes(action)) {
+        res.status(400).json({ success: false, message: "action must be approve or reject" });
+        return;
+      }
+      const user = await adminService.verifyIdentity(String(req.params.id), action);
+      sendSuccess(res, `Identity ${action === "approve" ? "approved" : "rejected"}`, user);
+    } catch (err) { next(err); }
+  }
+
   async deleteUser(req: Request, res: Response, next: NextFunction) {
     try {
       await adminService.deleteUser(String(req.params.id));
