@@ -8,7 +8,10 @@ export interface IUser extends Document {
   lastName: string;
   phone?: string;
   profilePhoto?: string;
+  bio?: string;
+  dateOfBirth?: Date;
   location?: {
+    address?: string;
     city: string;
     province: string;
     country: string;
@@ -61,7 +64,21 @@ export interface IItem extends Document {
   availability: {
     isAvailable: boolean;
     blockedDates: Date[];
+    availableFrom?: Date;
+    availableTo?: Date;
   };
+  deliveryOptions: {
+    pickup: boolean;
+    delivery: boolean;
+    deliveryRadius?: number;
+  };
+  weeklyRate?: number;
+  monthlyRate?: number;
+  depositAmount: number;
+  minRentalDays: number;
+  maxRentalDays?: number;
+  quantity: number;
+  isPaused: boolean;
   condition: "new" | "like_new" | "good" | "fair";
   isFeatured: boolean;
   featuredUntil?: Date;

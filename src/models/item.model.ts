@@ -24,7 +24,21 @@ const ItemSchema = new Schema<IItem>(
     availability: {
       isAvailable: { type: Boolean, default: true },
       blockedDates: [{ type: Date }],
+      availableFrom: { type: Date },
+      availableTo: { type: Date },
     },
+    deliveryOptions: {
+      pickup: { type: Boolean, default: true },
+      delivery: { type: Boolean, default: false },
+      deliveryRadius: { type: Number },
+    },
+    weeklyRate: { type: Number, min: 0 },
+    monthlyRate: { type: Number, min: 0 },
+    depositAmount: { type: Number, default: 0, min: 0 },
+    minRentalDays: { type: Number, default: 1, min: 1 },
+    maxRentalDays: { type: Number },
+    quantity: { type: Number, default: 1, min: 1 },
+    isPaused: { type: Boolean, default: false },
     condition: {
       type: String,
       enum: ["new", "like_new", "good", "fair"],

@@ -13,7 +13,23 @@ export class UserService {
   }
 
   async updateProfile(userId: string, data: Record<string, unknown>) {
-    const user = await userRepo.updateById(userId, data);
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (key === "location" && value && typeof value === "object") {
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          if (k === "coordinates" && v && typeof v === "object") {
+            for (const [ck, cv] of Object.entries(v as Record<string, unknown>)) {
+              update[`location.coordinates.${ck}`] = cv;
+            }
+          } else {
+            update[`location.${k}`] = v;
+          }
+        }
+      } else {
+        update[key] = value;
+      }
+    }
+    const user = await userRepo.updateById(userId, update);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
     return user;
   }

@@ -87,4 +87,31 @@ export class ItemController {
       sendSuccess(res, "Availability updated", item);
     } catch (err) { next(err); }
   }
+
+  async pauseListing(req: Request, res: Response, next: NextFunction) {
+    try {
+      const item = await itemService.pauseListing(String(req.params.id), req.user!.userId);
+      sendSuccess(res, "Listing paused", item);
+    } catch (err) { next(err); }
+  }
+
+  async resumeListing(req: Request, res: Response, next: NextFunction) {
+    try {
+      const item = await itemService.resumeListing(String(req.params.id), req.user!.userId);
+      sendSuccess(res, "Listing resumed", item);
+    } catch (err) { next(err); }
+  }
+
+  async getFeed(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { lat, lng, radius, limit } = req.query;
+      const result = await itemService.getFeed({
+        lat: lat ? Number(lat) : undefined,
+        lng: lng ? Number(lng) : undefined,
+        radius: radius ? Number(radius) : 20,
+        limit: limit ? Number(limit) : 10,
+      });
+      sendSuccess(res, "Feed retrieved", result);
+    } catch (err) { next(err); }
+  }
 }

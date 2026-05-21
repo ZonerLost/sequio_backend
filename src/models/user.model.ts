@@ -11,7 +11,10 @@ const UserSchema = new Schema<IUser>(
     lastName: { type: String, required: true, trim: true },
     phone: { type: String, trim: true },
     profilePhoto: { type: String },
+    bio: { type: String, trim: true },
+    dateOfBirth: { type: Date },
     location: {
+      address: { type: String, trim: true },
       city: { type: String },
       province: { type: String },
       country: { type: String, default: "Canada" },
