@@ -106,10 +106,13 @@ const options: swaggerJsdoc.Options = {
             firstName: { type: "string", example: "John" },
             lastName: { type: "string", example: "Doe" },
             phone: { type: "string", example: "+14161234567" },
+            bio: { type: "string", example: "I love renting outdoor gear.", maxLength: 500 },
+            dateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
             language: { type: "string", enum: ["en", "fr"], example: "en" },
             location: {
               type: "object",
               properties: {
+                address: { type: "string", example: "123 Main Street" },
                 city: { type: "string", example: "Montreal" },
                 province: { type: "string", example: "Quebec" },
                 country: { type: "string", example: "Canada" },
@@ -129,19 +132,40 @@ const options: swaggerJsdoc.Options = {
           type: "object",
           required: ["title", "description", "category", "dailyRate", "location", "condition"],
           properties: {
-            title: { type: "string", example: "DeWalt Power Drill" },
+            title: { type: "string", example: "Mountain Bike - Trek 820" },
             description: {
               type: "string",
-              example: "Heavy duty power drill, perfect for home renovation projects.",
+              example: "Great mountain bike, perfect for trails and city riding.",
             },
-            category: { type: "string", example: "tools" },
-            subCategory: { type: "string", example: "power tools" },
+            category: { type: "string", example: "sports" },
+            subCategory: { type: "string", example: "cycling" },
             dailyRate: { type: "number", example: 25 },
+            weeklyRate: { type: "number", example: 140 },
+            monthlyRate: { type: "number", example: 450 },
+            depositAmount: { type: "number", example: 100 },
+            minRentalDays: { type: "integer", example: 1 },
+            maxRentalDays: { type: "integer", example: 30 },
+            quantity: { type: "integer", example: 2 },
             currency: { type: "string", example: "CAD" },
             condition: {
               type: "string",
               enum: ["new", "like_new", "good", "fair"],
-              example: "good",
+              example: "like_new",
+            },
+            deliveryOptions: {
+              type: "object",
+              properties: {
+                pickup: { type: "boolean", example: true },
+                delivery: { type: "boolean", example: true },
+                deliveryRadius: { type: "number", example: 15 },
+              },
+            },
+            availability: {
+              type: "object",
+              properties: {
+                availableFrom: { type: "string", format: "date", example: "2026-06-01" },
+                availableTo: { type: "string", format: "date", example: "2026-09-30" },
+              },
             },
             location: {
               type: "object",
@@ -163,7 +187,7 @@ const options: swaggerJsdoc.Options = {
             tags: {
               type: "array",
               items: { type: "string" },
-              example: ["drill", "power tool", "dewalt"],
+              example: ["bike", "mountain", "trek"],
             },
           },
         },
@@ -171,10 +195,12 @@ const options: swaggerJsdoc.Options = {
           type: "object",
           properties: {
             isAvailable: { type: "boolean", example: true },
+            availableFrom: { type: "string", format: "date", example: "2026-06-01" },
+            availableTo: { type: "string", format: "date", example: "2026-09-30" },
             blockedDates: {
               type: "array",
               items: { type: "string", format: "date" },
-              example: ["2026-03-01", "2026-03-02"],
+              example: ["2026-07-04"],
             },
           },
         },

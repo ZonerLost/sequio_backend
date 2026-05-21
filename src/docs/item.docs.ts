@@ -38,7 +38,7 @@
  *         name: sortBy
  *         schema:
  *           type: string
- *           enum: [dailyRate, createdAt, averageRating]
+ *           enum: [dailyRate, createdAt, averageRating, totalRentals]
  *           default: createdAt
  *       - in: query
  *         name: sortOrder
@@ -46,6 +46,20 @@
  *           type: string
  *           enum: [asc, desc]
  *           default: desc
+ *       - in: query
+ *         name: lat
+ *         schema: { type: number }
+ *         example: 45.5017
+ *         description: User latitude for location-based filtering
+ *       - in: query
+ *         name: lng
+ *         schema: { type: number }
+ *         example: -73.5673
+ *         description: User longitude for location-based filtering
+ *       - in: query
+ *         name: radius
+ *         schema: { type: number, default: 20 }
+ *         description: Search radius in km (requires lat and lng)
  *     responses:
  *       200:
  *         description: Items retrieved with pagination
@@ -75,6 +89,57 @@
  *         description: Item created successfully
  *       401:
  *         description: Unauthorized
+ *
+ * /items/feed:
+ *   get:
+ *     tags: [Items]
+ *     summary: Get categorized feed — Near Me, Popular, Recent
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         schema: { type: number }
+ *         example: 45.5017
+ *         description: User latitude (required for Near Me section)
+ *       - in: query
+ *         name: lng
+ *         schema: { type: number }
+ *         example: -73.5673
+ *         description: User longitude (required for Near Me section)
+ *       - in: query
+ *         name: radius
+ *         schema: { type: number, default: 20 }
+ *         description: Search radius in km
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10, maximum: 20 }
+ *         description: Number of items per section
+ *     responses:
+ *       200:
+ *         description: Feed retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Feed retrieved
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     nearMe:
+ *                       type: array
+ *                       items: { type: object }
+ *                     popular:
+ *                       type: array
+ *                       items: { type: object }
+ *                     recent:
+ *                       type: array
+ *                       items: { type: object }
  *
  * /items/my-listings:
  *   get:
@@ -217,6 +282,68 @@
  *     responses:
  *       200:
  *         description: Availability updated
+ *       403:
+ *         description: Unauthorized - not the owner
+ *
+ * /items/{id}/pause:
+ *   put:
+ *     tags: [Items]
+ *     summary: Pause a listing — hides it from public search and feed
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Listing paused
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 message: { type: string, example: Listing paused }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id: { type: string }
+ *                     isPaused: { type: boolean, example: true }
+ *       400:
+ *         description: Listing is already paused
+ *       403:
+ *         description: Unauthorized - not the owner
+ *
+ * /items/{id}/resume:
+ *   put:
+ *     tags: [Items]
+ *     summary: Resume a paused listing — makes it visible again
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Listing resumed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 message: { type: string, example: Listing resumed }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id: { type: string }
+ *                     isPaused: { type: boolean, example: false }
+ *       400:
+ *         description: Listing is not paused
  *       403:
  *         description: Unauthorized - not the owner
  */
