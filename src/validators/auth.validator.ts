@@ -70,3 +70,29 @@ export const changePasswordSchema = Joi.object({
       "string.pattern.base": "Password must contain uppercase, lowercase and number",
     }),
 });
+
+export const phoneSendOtpSchema = Joi.object({
+  phone: Joi.string()
+    .pattern(/^\+?[1-9]\d{6,14}$/)
+    .required()
+    .messages({
+      "string.pattern.base": "Phone number must be a valid international format (e.g. +14161234567)",
+      "any.required": "Phone number is required",
+    }),
+});
+
+export const phoneVerifyOtpSchema = Joi.object({
+  phone: Joi.string()
+    .pattern(/^\+?[1-9]\d{6,14}$/)
+    .required()
+    .messages({
+      "string.pattern.base": "Phone number must be a valid international format",
+      "any.required": "Phone number is required",
+    }),
+  otp: Joi.string().length(6).required().messages({
+    "string.length": "OTP must be exactly 6 digits",
+    "any.required": "OTP is required",
+  }),
+  firstName: Joi.string().min(2).max(50).optional(),
+  lastName: Joi.string().min(2).max(50).optional(),
+});

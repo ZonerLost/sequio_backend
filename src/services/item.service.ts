@@ -2,7 +2,11 @@ import { ItemRepository } from "../repository/item.repository";
 import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS, CONSTANTS } from "../config/constants";
-import { IItem, PaginationMeta } from "../types";
+import { IItem, IWeeklySchedule, PaginationMeta } from "../types";
+import { CO2_BY_CATEGORY } from "../models/eco.model";
+
+const BOOST_DURATION_DAYS = 7;
+const BOOST_PRICE_CAD = 9.99;
 
 type FilterQuery = Record<string, any>;
 
@@ -212,13 +216,83 @@ export class ItemService {
     if (getOwnerId(item) !== ownerId)
       throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
     const updated = await itemRepo.updateById(itemId, {
-      availability: {
-        isAvailable: data.isAvailable ?? item.availability.isAvailable,
-        blockedDates: data.blockedDates ?? item.availability.blockedDates,
-        availableFrom: data.availableFrom ?? item.availability.availableFrom,
-        availableTo: data.availableTo ?? item.availability.availableTo,
-      },
+      "availability.isAvailable": data.isAvailable ?? item.availability.isAvailable,
+      "availability.blockedDates": data.blockedDates ?? item.availability.blockedDates,
+      "availability.availableFrom": data.availableFrom ?? item.availability.availableFrom,
+      "availability.availableTo": data.availableTo ?? item.availability.availableTo,
     });
     return updated!;
+  }
+
+  async updatePickupSchedule(itemId: string, ownerId: string, data: IWeeklySchedule): Promise<IItem> {
+    const item = await itemRepo.findById(itemId);
+    if (!item) throw new AppError("Item not found", HTTP_STATUS.NOT_FOUND);
+    if (getOwnerId(item) !== ownerId) throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
+    const updated = await itemRepo.updateById(itemId, { pickupSchedule: data });
+    return updated!;
+  }
+
+  async updateDeliverySchedule(itemId: string, ownerId: string, data: IWeeklySchedule): Promise<IItem> {
+    const item = await itemRepo.findById(itemId);
+    if (!item) throw new AppError("Item not found", HTTP_STATUS.NOT_FOUND);
+    if (getOwnerId(item) !== ownerId) throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
+    const updated = await itemRepo.updateById(itemId, { deliverySchedule: data });
+    return updated!;
+  }
+
+  getBoostConfig() {
+    return {
+      price: BOOST_PRICE_CAD,
+      currency: "CAD",
+      durationDays: BOOST_DURATION_DAYS,
+      description: `Boost your listing for ${BOOST_DURATION_DAYS} days to appear at the top of search results and feed.`,
+    };
+  }
+
+  async boostListing(itemId: string, ownerId: string): Promise<IItem> {
+    const item = await itemRepo.findById(itemId);
+    if (!item) throw new AppError("Item not found", HTTP_STATUS.NOT_FOUND);
+    if (getOwnerId(item) !== ownerId) throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
+    if (!item.isActive) throw new AppError("Cannot boost an inactive listing", HTTP_STATUS.BAD_REQUEST);
+    if (item.isPaused) throw new AppError("Cannot boost a paused listing", HTTP_STATUS.BAD_REQUEST);
+
+    const boostExpiresAt = new Date();
+    boostExpiresAt.setDate(boostExpiresAt.getDate() + BOOST_DURATION_DAYS);
+
+    const updated = await itemRepo.updateById(itemId, {
+      isBoosted: true,
+      boostedAt: new Date(),
+      boostExpiresAt,
+    });
+    return updated!;
+  }
+
+  getFormConfig() {
+    const categories = Object.keys(CO2_BY_CATEGORY).map((cat) => ({
+      id: cat,
+      label: cat
+        .split("_")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" "),
+    }));
+
+    return {
+      categories,
+      conditions: [
+        { id: "new", label: "New" },
+        { id: "like_new", label: "Like New" },
+        { id: "good", label: "Good" },
+        { id: "fair", label: "Fair" },
+      ],
+      bookingTypes: [
+        { id: "manual", label: "Request to Book", description: "You manually approve each booking request" },
+        { id: "instant", label: "Instant Booking", description: "Bookings are automatically confirmed" },
+      ],
+      rentalOptions: {
+        currencies: [{ id: "CAD", label: "Canadian Dollar (CAD)" }],
+        minRentalDays: 1,
+        maxRentalDays: 365,
+      },
+    };
   }
 }

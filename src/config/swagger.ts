@@ -36,6 +36,35 @@ const options: swaggerJsdoc.Options = {
       },
       schemas: {
         // ─── Auth Schemas ───────────────────────────────
+        PhoneSendOtpRequest: {
+          type: "object",
+          required: ["phone"],
+          properties: {
+            phone: {
+              type: "string",
+              example: "+14161234567",
+              description: "Phone number in international format",
+            },
+          },
+        },
+        PhoneVerifyOtpRequest: {
+          type: "object",
+          required: ["phone", "otp"],
+          properties: {
+            phone: { type: "string", example: "+14161234567" },
+            otp: { type: "string", example: "482910", description: "6-digit OTP" },
+            firstName: {
+              type: "string",
+              example: "John",
+              description: "Required only for new users",
+            },
+            lastName: {
+              type: "string",
+              example: "Doe",
+              description: "Required only for new users",
+            },
+          },
+        },
         RegisterRequest: {
           type: "object",
           required: ["email", "password", "firstName", "lastName"],
@@ -127,7 +156,86 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        // ─── Address Schemas ─────────────────────────────
+        AddAddressRequest: {
+          type: "object",
+          required: ["label", "addressLine", "city", "province"],
+          properties: {
+            label: { type: "string", example: "Home", description: "e.g. Home, Work, Other" },
+            addressLine: { type: "string", example: "123 Main Street" },
+            city: { type: "string", example: "Montreal" },
+            province: { type: "string", example: "Quebec" },
+            country: { type: "string", example: "Canada", default: "Canada" },
+            postalCode: { type: "string", example: "H3Z 2Y7" },
+            coordinates: {
+              type: "object",
+              properties: {
+                lat: { type: "number", example: 45.5017 },
+                lng: { type: "number", example: -73.5673 },
+              },
+            },
+          },
+        },
+        // ─── Schedule Schemas ─────────────────────────────
+        DaySlot: {
+          type: "object",
+          required: ["enabled"],
+          properties: {
+            enabled: { type: "boolean", example: true },
+            allDay: { type: "boolean", example: false, default: false },
+            startTime: { type: "string", example: "09:00", description: "HH:MM format" },
+            endTime: { type: "string", example: "18:00", description: "HH:MM format" },
+          },
+        },
+        UpdateScheduleRequest: {
+          type: "object",
+          properties: {
+            scheduleType: {
+              type: "string",
+              enum: ["recurring", "specific_dates"],
+              default: "recurring",
+              example: "recurring",
+            },
+            recurringDays: {
+              type: "object",
+              description: "Used when scheduleType is recurring",
+              properties: {
+                monday: { $ref: "#/components/schemas/DaySlot" },
+                tuesday: { $ref: "#/components/schemas/DaySlot" },
+                wednesday: { $ref: "#/components/schemas/DaySlot" },
+                thursday: { $ref: "#/components/schemas/DaySlot" },
+                friday: { $ref: "#/components/schemas/DaySlot" },
+                saturday: { $ref: "#/components/schemas/DaySlot" },
+                sunday: { $ref: "#/components/schemas/DaySlot" },
+              },
+            },
+            specificDates: {
+              type: "array",
+              description: "Used when scheduleType is specific_dates",
+              items: {
+                allOf: [
+                  { $ref: "#/components/schemas/DaySlot" },
+                  {
+                    type: "object",
+                    required: ["date"],
+                    properties: {
+                      date: { type: "string", format: "date", example: "2026-06-15" },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
         // ─── Item Schemas ───────────────────────────────
+        DeliveryPricingTier: {
+          type: "object",
+          required: ["radius", "fee"],
+          properties: {
+            radius: { type: "number", example: 5, description: "Delivery radius in km" },
+            fee: { type: "number", example: 10.0, description: "Delivery fee in CAD" },
+          },
+        },
         CreateItemRequest: {
           type: "object",
           required: ["title", "description", "category", "dailyRate", "location", "condition"],
@@ -142,11 +250,18 @@ const options: swaggerJsdoc.Options = {
             dailyRate: { type: "number", example: 25 },
             weeklyRate: { type: "number", example: 140 },
             monthlyRate: { type: "number", example: 450 },
-            depositAmount: { type: "number", example: 100 },
-            minRentalDays: { type: "integer", example: 1 },
+            depositAmount: { type: "number", example: 100, default: 0 },
+            minRentalDays: { type: "integer", example: 1, default: 1 },
             maxRentalDays: { type: "integer", example: 30 },
-            quantity: { type: "integer", example: 2 },
-            currency: { type: "string", example: "CAD" },
+            quantity: { type: "integer", example: 2, default: 1 },
+            currency: { type: "string", example: "CAD", default: "CAD" },
+            bookingType: {
+              type: "string",
+              enum: ["manual", "instant"],
+              default: "manual",
+              example: "manual",
+              description: "manual = owner approves each request; instant = auto-confirmed",
+            },
             condition: {
               type: "string",
               enum: ["new", "like_new", "good", "fair"],
@@ -155,9 +270,15 @@ const options: swaggerJsdoc.Options = {
             deliveryOptions: {
               type: "object",
               properties: {
-                pickup: { type: "boolean", example: true },
-                delivery: { type: "boolean", example: true },
-                deliveryRadius: { type: "number", example: 15 },
+                pickup: { type: "boolean", example: true, default: true },
+                delivery: { type: "boolean", example: true, default: false },
+                deliveryRadius: { type: "number", example: 15, description: "Simple single radius in km" },
+                deliveryFee: { type: "number", example: 10.0 },
+                deliveryPricing: {
+                  type: "array",
+                  description: "Multiple delivery tiers by radius",
+                  items: { $ref: "#/components/schemas/DeliveryPricingTier" },
+                },
               },
             },
             availability: {
@@ -248,6 +369,7 @@ const options: swaggerJsdoc.Options = {
       { name: "Payments", description: "Payment records and payment methods" },
       { name: "Dashboard", description: "User dashboard and stats" },
       { name: "Admin", description: "Admin panel endpoints (admin role required)" },
+      { name: "Languages", description: "Supported app languages" },
     ],
   },
   apis: ["./src/docs/*.ts", "./dist/docs/*.js"],

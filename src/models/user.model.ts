@@ -28,6 +28,7 @@ const UserSchema = new Schema<IUser>(
     googleId: { type: String },
     facebookId: { type: String },
     isEmailVerified: { type: Boolean, default: false },
+    isPhoneVerified: { type: Boolean, default: false },
     isIdentityVerified: { type: Boolean, default: false },
     identityDocument: { type: String },
     rentalHistory: [{ type: Schema.Types.ObjectId, ref: "Booking" }],

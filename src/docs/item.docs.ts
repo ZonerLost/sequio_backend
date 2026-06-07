@@ -346,6 +346,164 @@
  *         description: Listing is not paused
  *       403:
  *         description: Unauthorized - not the owner
+ *
+ * /items/form-config:
+ *   get:
+ *     tags: [Items]
+ *     summary: Get item listing form configuration
+ *     description: >
+ *       Returns all static options needed to populate the Add Item form —
+ *       categories, conditions, booking types, and currency options.
+ *       No authentication required.
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Form config retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string, example: sports }
+ *                           label: { type: string, example: Sports }
+ *                     conditions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string, example: like_new }
+ *                           label: { type: string, example: Like New }
+ *                     bookingTypes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string, example: manual }
+ *                           label: { type: string, example: Request to Book }
+ *                           description: { type: string }
+ *
+ * /items/boost-config:
+ *   get:
+ *     tags: [Items]
+ *     summary: Get boost pricing configuration
+ *     description: Returns the current boost price and duration. No authentication required.
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Boost config retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     price: { type: number, example: 9.99 }
+ *                     currency: { type: string, example: CAD }
+ *                     durationDays: { type: integer, example: 7 }
+ *                     description: { type: string }
+ *
+ * /items/{id}/boost:
+ *   post:
+ *     tags: [Items]
+ *     summary: Boost a listing for 7 days
+ *     description: >
+ *       Marks the listing as boosted for 7 days. Boosted listings appear at the top of
+ *       search results and feed. Owner only. Payment integration (Stripe) is a future milestone —
+ *       boost is applied immediately.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         example: 64f1a2b3c4d5e6f7a8b9c0d1
+ *     responses:
+ *       200:
+ *         description: Listing boosted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id: { type: string }
+ *                     isBoosted: { type: boolean, example: true }
+ *                     boostExpiresAt: { type: string, format: date-time }
+ *       400:
+ *         description: Cannot boost a paused or inactive listing
+ *       403:
+ *         description: Forbidden — not the owner
+ *
+ * /items/{id}/pickup-schedule:
+ *   put:
+ *     tags: [Items]
+ *     summary: Update pickup availability schedule
+ *     description: >
+ *       Sets the pickup availability schedule for the item. Use scheduleType "recurring" for
+ *       weekly repeating days or "specific_dates" for individual date slots.
+ *       Times must be in HH:MM format (e.g. "09:00").
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateScheduleRequest'
+ *     responses:
+ *       200:
+ *         description: Pickup schedule updated
+ *       403:
+ *         description: Forbidden — not the owner
+ *       404:
+ *         description: Item not found
+ *
+ * /items/{id}/delivery-schedule:
+ *   put:
+ *     tags: [Items]
+ *     summary: Update delivery availability schedule
+ *     description: Sets the delivery availability schedule. Same structure as pickup-schedule.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateScheduleRequest'
+ *     responses:
+ *       200:
+ *         description: Delivery schedule updated
+ *       403:
+ *         description: Forbidden — not the owner
+ *       404:
+ *         description: Item not found
  */
 
 export {};

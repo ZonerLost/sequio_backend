@@ -28,7 +28,10 @@ export class ItemRepository {
   ): Promise<{ items: IItem[]; total: number }> {
     const { page = 1, limit = 10, sortBy = "createdAt", sortOrder = "desc" } = pagination;
     const skip = (page - 1) * limit;
-    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+    const sort: Record<string, 1 | -1> = {
+      isBoosted: -1,
+      [sortBy]: sortOrder === "asc" ? 1 : -1,
+    };
     const [items, total] = await Promise.all([
       ItemModel.find(filter)
         .populate("owner", "firstName lastName profilePhoto averageRating")

@@ -25,6 +25,7 @@ export interface IUser extends Document {
   googleId?: string;
   facebookId?: string;
   isEmailVerified: boolean;
+  isPhoneVerified: boolean;
   isIdentityVerified: boolean;
   identityDocument?: string;
   rentalHistory: Types.ObjectId[];
@@ -41,6 +42,27 @@ export interface IUser extends Document {
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
+export interface IDaySlot {
+  enabled: boolean;
+  allDay: boolean;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface IWeeklySchedule {
+  scheduleType: "recurring" | "specific_dates";
+  recurringDays: {
+    monday: IDaySlot;
+    tuesday: IDaySlot;
+    wednesday: IDaySlot;
+    thursday: IDaySlot;
+    friday: IDaySlot;
+    saturday: IDaySlot;
+    sunday: IDaySlot;
+  };
+  specificDates: Array<IDaySlot & { date: Date }>;
+}
+
 export interface IItem extends Document {
   _id: Types.ObjectId;
   owner: Types.ObjectId;
@@ -50,6 +72,12 @@ export interface IItem extends Document {
   subCategory?: string;
   photos: string[];
   dailyRate: number;
+  weeklyRate?: number;
+  monthlyRate?: number;
+  depositAmount: number;
+  minRentalDays: number;
+  maxRentalDays?: number;
+  quantity: number;
   currency: string;
   location: {
     address: string;
@@ -71,17 +99,19 @@ export interface IItem extends Document {
     pickup: boolean;
     delivery: boolean;
     deliveryRadius?: number;
+    deliveryFee?: number;
+    deliveryPricing?: Array<{ radius: number; fee: number }>;
   };
-  weeklyRate?: number;
-  monthlyRate?: number;
-  depositAmount: number;
-  minRentalDays: number;
-  maxRentalDays?: number;
-  quantity: number;
+  bookingType: "manual" | "instant";
+  pickupSchedule?: IWeeklySchedule;
+  deliverySchedule?: IWeeklySchedule;
   isPaused: boolean;
   condition: "new" | "like_new" | "good" | "fair";
   isFeatured: boolean;
   featuredUntil?: Date;
+  isBoosted: boolean;
+  boostedAt?: Date;
+  boostExpiresAt?: Date;
   averageRating: number;
   totalReviews: number;
   totalRentals: number;
@@ -93,9 +123,10 @@ export interface IItem extends Document {
 
 export interface IOtp extends Document {
   userId: Types.ObjectId;
-  email: string;
+  email?: string;
+  phone?: string;
   otp: string;
-  type: "email_verification" | "password_reset";
+  type: "email_verification" | "password_reset" | "phone_verification";
   expiresAt: Date;
   isUsed: boolean;
 }

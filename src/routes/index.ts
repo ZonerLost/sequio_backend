@@ -23,6 +23,17 @@ router.get("/health", (_, res) => {
   });
 });
 
+router.get("/languages", (_, res) => {
+  res.json({
+    success: true,
+    message: "Supported languages retrieved",
+    data: [
+      { code: "en", label: "English", nativeLabel: "English" },
+      { code: "fr", label: "French", nativeLabel: "Français" },
+    ],
+  });
+});
+
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
 router.use("/items", itemRoutes);

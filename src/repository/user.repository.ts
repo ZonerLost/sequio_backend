@@ -22,6 +22,10 @@ export class UserRepository {
     return query.exec();
   }
 
+  async findByPhone(phone: string): Promise<IUser | null> {
+    return UserModel.findOne({ phone }).exec();
+  }
+
   async findByGoogleId(googleId: string): Promise<IUser | null> {
     return UserModel.findOne({ googleId }).exec();
   }

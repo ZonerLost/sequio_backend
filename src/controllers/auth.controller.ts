@@ -80,4 +80,26 @@ export class AuthController {
       sendSuccess(res, result.message);
     } catch (err) { next(err); }
   }
+
+  async sendPhoneOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await authService.sendPhoneOtp(req.body.phone);
+      sendSuccess(res, result.message);
+    } catch (err) { next(err); }
+  }
+
+  async verifyPhoneOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { phone, otp, firstName, lastName } = req.body;
+      const result = await authService.verifyPhoneOtp(phone, otp, firstName, lastName);
+      sendSuccess(res, "Phone verified and logged in successfully", result);
+    } catch (err) { next(err); }
+  }
+
+  async resendPhoneOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await authService.resendPhoneOtp(req.body.phone);
+      sendSuccess(res, result.message);
+    } catch (err) { next(err); }
+  }
 }

@@ -216,6 +216,91 @@
  *     responses:
  *       200:
  *         description: Logged out successfully
+ *
+ * /auth/phone/send-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Send OTP to phone number (phone login / registration)
+ *     description: >
+ *       Sends a 6-digit OTP to the given phone number. If no account is linked to this
+ *       number a new account is created automatically. Call verify-otp next to complete login.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PhoneSendOtpRequest'
+ *     responses:
+ *       200:
+ *         description: OTP sent to phone number
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       400:
+ *         description: Invalid phone number format
+ *       403:
+ *         description: Account suspended
+ *
+ * /auth/phone/verify-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Verify phone OTP and login
+ *     description: >
+ *       Verifies the OTP and returns access + refresh tokens. For new users,
+ *       provide firstName and lastName to complete the profile.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PhoneVerifyOtpRequest'
+ *     responses:
+ *       200:
+ *         description: Phone verified, tokens returned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/SuccessResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         accessToken:
+ *                           type: string
+ *                         refreshToken:
+ *                           type: string
+ *                         isNewUser:
+ *                           type: boolean
+ *                           description: True if this phone number was not previously verified
+ *                         user:
+ *                           type: object
+ *       400:
+ *         description: Invalid or expired OTP
+ *       404:
+ *         description: Phone number not found (call send-otp first)
+ *
+ * /auth/phone/resend-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Resend OTP to phone number
+ *     description: Cancels the previous OTP and sends a fresh one to the same phone number.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PhoneSendOtpRequest'
+ *     responses:
+ *       200:
+ *         description: OTP resent
+ *       404:
+ *         description: Phone number not found (call send-otp first)
  */
 
 export {};

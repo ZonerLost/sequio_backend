@@ -11,6 +11,8 @@ import {
   googleAuthSchema,
   refreshTokenSchema,
   changePasswordSchema,
+  phoneSendOtpSchema,
+  phoneVerifyOtpSchema,
 } from "../validators/auth.validator";
 
 const router = Router();
@@ -26,5 +28,10 @@ router.post("/reset-password", validate(resetPasswordSchema), ctrl.resetPassword
 router.post("/refresh-token", validate(refreshTokenSchema), ctrl.refreshToken.bind(ctrl));
 router.post("/change-password", authenticate, validate(changePasswordSchema), ctrl.changePassword.bind(ctrl));
 router.post("/logout", authenticate, ctrl.logout.bind(ctrl));
+
+// Phone authentication
+router.post("/phone/send-otp", validate(phoneSendOtpSchema), ctrl.sendPhoneOtp.bind(ctrl));
+router.post("/phone/verify-otp", validate(phoneVerifyOtpSchema), ctrl.verifyPhoneOtp.bind(ctrl));
+router.post("/phone/resend-otp", validate(phoneSendOtpSchema), ctrl.resendPhoneOtp.bind(ctrl));
 
 export default router;

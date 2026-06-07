@@ -1,5 +1,18 @@
 import Joi from "joi";
 
+const deliveryPricingTierSchema = Joi.object({
+  radius: Joi.number().min(1).required(),
+  fee: Joi.number().min(0).required(),
+});
+
+const deliveryOptionsSchema = Joi.object({
+  pickup: Joi.boolean().default(true),
+  delivery: Joi.boolean().default(false),
+  deliveryRadius: Joi.number().min(1).optional(),
+  deliveryFee: Joi.number().min(0).optional(),
+  deliveryPricing: Joi.array().items(deliveryPricingTierSchema).optional(),
+});
+
 export const createItemSchema = Joi.object({
   title: Joi.string().min(5).max(100).required(),
   description: Joi.string().min(20).max(2000).required(),
@@ -23,15 +36,12 @@ export const createItemSchema = Joi.object({
       lng: Joi.number().required(),
     }).optional(),
   }).required(),
-  deliveryOptions: Joi.object({
-    pickup: Joi.boolean().default(true),
-    delivery: Joi.boolean().default(false),
-    deliveryRadius: Joi.number().min(1).optional(),
-  }).default({ pickup: true, delivery: false }),
+  deliveryOptions: deliveryOptionsSchema.default({ pickup: true, delivery: false }),
   availability: Joi.object({
     availableFrom: Joi.date().optional(),
     availableTo: Joi.date().optional(),
   }).optional(),
+  bookingType: Joi.string().valid("manual", "instant").default("manual"),
   condition: Joi.string().valid("new", "like_new", "good", "fair").required(),
   tags: Joi.array().items(Joi.string()).optional(),
 });
@@ -58,11 +68,8 @@ export const updateItemSchema = Joi.object({
       lng: Joi.number(),
     }).optional(),
   }).optional(),
-  deliveryOptions: Joi.object({
-    pickup: Joi.boolean().optional(),
-    delivery: Joi.boolean().optional(),
-    deliveryRadius: Joi.number().min(1).optional(),
-  }).optional(),
+  deliveryOptions: deliveryOptionsSchema.optional(),
+  bookingType: Joi.string().valid("manual", "instant").optional(),
   condition: Joi.string().valid("new", "like_new", "good", "fair").optional(),
   tags: Joi.array().items(Joi.string()).optional(),
 });
@@ -72,6 +79,41 @@ export const updateAvailabilitySchema = Joi.object({
   blockedDates: Joi.array().items(Joi.date()).optional(),
   availableFrom: Joi.date().optional(),
   availableTo: Joi.date().optional(),
+});
+
+const daySlotSchema = Joi.object({
+  enabled: Joi.boolean().required(),
+  allDay: Joi.boolean().default(false),
+  startTime: Joi.string()
+    .pattern(/^\d{2}:\d{2}$/)
+    .optional()
+    .messages({ "string.pattern.base": "startTime must be in HH:MM format" }),
+  endTime: Joi.string()
+    .pattern(/^\d{2}:\d{2}$/)
+    .optional()
+    .messages({ "string.pattern.base": "endTime must be in HH:MM format" }),
+});
+
+const recurringDaysSchema = Joi.object({
+  monday: daySlotSchema.optional(),
+  tuesday: daySlotSchema.optional(),
+  wednesday: daySlotSchema.optional(),
+  thursday: daySlotSchema.optional(),
+  friday: daySlotSchema.optional(),
+  saturday: daySlotSchema.optional(),
+  sunday: daySlotSchema.optional(),
+}).optional();
+
+export const updateScheduleSchema = Joi.object({
+  scheduleType: Joi.string().valid("recurring", "specific_dates").default("recurring"),
+  recurringDays: recurringDaysSchema,
+  specificDates: Joi.array()
+    .items(
+      daySlotSchema.keys({
+        date: Joi.date().required(),
+      })
+    )
+    .optional(),
 });
 
 export const itemQuerySchema = Joi.object({

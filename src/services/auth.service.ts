@@ -17,6 +17,7 @@ import { HTTP_STATUS, CONSTANTS } from "../config/constants";
 import { ENV } from "../config/env";
 import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
+import { sendOtpSMS } from "../helpers/sms.helper";
 import { IUser } from "../types";
 
 const userRepo = new UserRepository();
@@ -232,6 +233,89 @@ export class AuthService {
     return { message: "Password reset successfully. Please login again." };
   }
 
+  async sendPhoneOtp(phone: string) {
+    // Normalize: always store/lookup with + prefix for consistency
+    const normalizedPhone = phone.startsWith("+") ? phone : `+${phone}`;
+
+    let user = await userRepo.findByPhone(normalizedPhone);
+
+    if (user) {
+      // Existing user — check before doing anything else
+      if (user.isBanned) throw new AppError("Your account has been suspended", HTTP_STATUS.FORBIDDEN);
+    } else {
+      // New user — create placeholder, name filled on verify
+      user = await userRepo.create({
+        phone: normalizedPhone,
+        firstName: "User",
+        lastName: "",
+        email: `phone_${normalizedPhone.replace(/\D/g, "")}@placeholder.local`,
+        authProvider: "email",
+        isEmailVerified: false,
+        isPhoneVerified: false,
+      });
+    }
+
+    const otp = generateOTP();
+    await otpRepo.create({
+      userId: user._id,
+      phone: normalizedPhone,
+      otp,
+      type: "phone_verification",
+      expiresAt: getOTPExpiry(ENV.OTP_EXPIRES_IN_MINUTES),
+    });
+
+    console.log(`\n=============================`);
+    console.log(`📱 Phone OTP for ${normalizedPhone}: ${otp}`);
+    console.log(`=============================\n`);
+
+    if (ENV.NODE_ENV !== "development") {
+      try {
+        await sendOtpSMS(normalizedPhone, otp);
+      } catch (smsError) {
+        console.error(`SMS sending failed for ${normalizedPhone}:`, smsError);
+        // Don't throw — OTP is saved, user can retry or use console OTP in dev
+      }
+    }
+
+    return { message: "OTP sent to your phone number" };
+  }
+
+  async verifyPhoneOtp(phone: string, otp: string, firstName?: string, lastName?: string) {
+    const normalizedPhone = phone.startsWith("+") ? phone : `+${phone}`;
+    const user = await userRepo.findByPhone(normalizedPhone);
+    if (!user) throw new AppError("Phone number not found", HTTP_STATUS.NOT_FOUND);
+    if (user.isBanned) throw new AppError("Your account has been suspended", HTTP_STATUS.FORBIDDEN);
+
+    const otpRecord = await otpRepo.findValid(user._id.toString(), otp, "phone_verification");
+    if (!otpRecord) throw new AppError("Invalid or expired OTP", HTTP_STATUS.BAD_REQUEST);
+
+    await otpRepo.markUsed(otpRecord._id.toString());
+
+    const updates: Record<string, unknown> = { isPhoneVerified: true, lastLoginAt: new Date() };
+    if (firstName) updates.firstName = firstName;
+    if (lastName) updates.lastName = lastName;
+
+    await userRepo.updateById(user._id.toString(), updates);
+    const updatedUser = await userRepo.findById(user._id.toString());
+    if (!updatedUser) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+
+    const tokens = await this.generateAndSaveTokens(updatedUser);
+    return {
+      ...tokens,
+      user: this.sanitizeUser(updatedUser),
+      isNewUser: !user.isPhoneVerified,
+    };
+  }
+
+  async resendPhoneOtp(phone: string) {
+    const normalizedPhone = phone.startsWith("+") ? phone : `+${phone}`;
+    const user = await userRepo.findByPhone(normalizedPhone);
+    if (!user) throw new AppError("Phone number not found. Please call send-otp first.", HTTP_STATUS.NOT_FOUND);
+    if (user.isBanned) throw new AppError("Your account has been suspended", HTTP_STATUS.FORBIDDEN);
+
+    return this.sendPhoneOtp(normalizedPhone);
+  }
+
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await userRepo.findById(userId, true);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
@@ -304,10 +388,12 @@ export class AuthService {
     return {
       _id: user._id,
       email: user.email,
+      phone: user.phone,
       firstName: user.firstName,
       lastName: user.lastName,
       profilePhoto: user.profilePhoto,
       isEmailVerified: user.isEmailVerified,
+      isPhoneVerified: user.isPhoneVerified,
       isIdentityVerified: user.isIdentityVerified,
       language: user.language,
       role: user.role,

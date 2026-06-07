@@ -4,11 +4,12 @@ import { IOtp } from "../types";
 const OtpSchema = new Schema<IOtp>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    email: { type: String, required: true, lowercase: true },
+    email: { type: String, lowercase: true },
+    phone: { type: String },
     otp: { type: String, required: true },
     type: {
       type: String,
-      enum: ["email_verification", "password_reset"],
+      enum: ["email_verification", "password_reset", "phone_verification"],
       required: true,
     },
     expiresAt: { type: Date, required: true },

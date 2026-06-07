@@ -1,13 +1,16 @@
 import { Router } from "express";
 import { UserController } from "../controllers/user.controller";
+import { AddressController } from "../controllers/address.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import { updateProfileSchema } from "../validators/profile.validator";
+import { addAddressSchema } from "../validators/address.validator";
 import { upload } from "../middleware/upload.middleware";
 import { saveFCMTokenHandler } from "./notification.routes";
 
 const router = Router();
 const ctrl = new UserController();
+const addressCtrl = new AddressController();
 
 router.use(authenticate);
 
@@ -16,5 +19,11 @@ router.put("/profile", validate(updateProfileSchema), ctrl.updateProfile.bind(ct
 router.put("/profile/photo", upload.single("photo"), ctrl.updateProfilePhoto.bind(ctrl));
 router.post("/identity-verify", upload.single("document"), ctrl.uploadIdentityDocument.bind(ctrl));
 router.post("/fcm-token", ...saveFCMTokenHandler);
+
+// Address management
+router.post("/addresses", validate(addAddressSchema), addressCtrl.addAddress.bind(addressCtrl));
+router.get("/addresses", addressCtrl.getAddresses.bind(addressCtrl));
+router.put("/addresses/:id/default", addressCtrl.setDefaultAddress.bind(addressCtrl));
+router.delete("/addresses/:id", addressCtrl.deleteAddress.bind(addressCtrl));
 
 export default router;

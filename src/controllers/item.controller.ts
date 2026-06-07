@@ -114,4 +114,47 @@ export class ItemController {
       sendSuccess(res, "Feed retrieved", result);
     } catch (err) { next(err); }
   }
+
+  async getFormConfig(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const config = itemService.getFormConfig();
+      sendSuccess(res, "Form config retrieved", config);
+    } catch (err) { next(err); }
+  }
+
+  async getBoostConfig(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const config = itemService.getBoostConfig();
+      sendSuccess(res, "Boost config retrieved", config);
+    } catch (err) { next(err); }
+  }
+
+  async boostListing(req: Request, res: Response, next: NextFunction) {
+    try {
+      const item = await itemService.boostListing(String(req.params.id), req.user!.userId);
+      sendSuccess(res, "Listing boosted successfully", item);
+    } catch (err) { next(err); }
+  }
+
+  async updatePickupSchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const item = await itemService.updatePickupSchedule(
+        String(req.params.id),
+        req.user!.userId,
+        req.body
+      );
+      sendSuccess(res, "Pickup schedule updated", item);
+    } catch (err) { next(err); }
+  }
+
+  async updateDeliverySchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const item = await itemService.updateDeliverySchedule(
+        String(req.params.id),
+        req.user!.userId,
+        req.body
+      );
+      sendSuccess(res, "Delivery schedule updated", item);
+    } catch (err) { next(err); }
+  }
 }
