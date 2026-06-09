@@ -34,7 +34,8 @@ export class UserService {
 
       const newEmail = (data.email as string).toLowerCase();
 
-      if (!currentUser.email.endsWith("@placeholder.local")) {
+      // Block only if email is already verified — unverified or placeholder can be updated
+      if (currentUser.isEmailVerified) {
         throw new AppError(
           "Email cannot be changed via profile update",
           HTTP_STATUS.BAD_REQUEST
