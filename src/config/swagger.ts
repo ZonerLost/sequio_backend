@@ -132,6 +132,7 @@ const options: swaggerJsdoc.Options = {
         UpdateProfileRequest: {
           type: "object",
           properties: {
+            email: { type: "string", format: "email", example: "john@example.com", description: "Phone-auth users only — sets real email and triggers verification OTP" },
             firstName: { type: "string", example: "John" },
             lastName: { type: "string", example: "Doe" },
             phone: { type: "string", example: "+14161234567" },

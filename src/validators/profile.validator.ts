@@ -1,6 +1,7 @@
 import Joi from "joi";
 
 export const updateProfileSchema = Joi.object({
+  email: Joi.string().email().lowercase().optional(),
   firstName: Joi.string().min(2).max(50).optional(),
   lastName: Joi.string().min(2).max(50).optional(),
   phone: Joi.string().optional(),
