@@ -386,7 +386,7 @@ export class AuthService {
   private sanitizeUser(user: IUser) {
     return {
       _id: user._id,
-      email: user.email,
+      email: user.email?.endsWith("@placeholder.local") ? null : user.email,
       phone: user.phone,
       firstName: user.firstName,
       lastName: user.lastName,

@@ -1,4 +1,5 @@
 import { UserRepository } from "../repository/user.repository";
+import { IUser } from "../types";
 import { OtpRepository } from "../repository/otp.repository";
 import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
 import { sendEmail, otpEmailTemplate } from "../helpers/email.helper";
@@ -14,7 +15,13 @@ export class UserService {
   async getProfile(userId: string) {
     const user = await userRepo.findById(userId);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
-    return user;
+    return this.sanitizeEmail(user);
+  }
+
+  private sanitizeEmail(user: IUser) {
+    const obj: Record<string, unknown> = (user as any).toObject();
+    if (typeof obj.email === "string" && obj.email.endsWith("@placeholder.local")) obj.email = null;
+    return obj;
   }
 
   async updateProfile(userId: string, data: Record<string, unknown>) {
