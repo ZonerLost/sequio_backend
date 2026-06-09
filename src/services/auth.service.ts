@@ -247,7 +247,6 @@ export class AuthService {
       user = await userRepo.create({
         phone: normalizedPhone,
         firstName: "User",
-        lastName: "",
         email: `phone_${normalizedPhone.replace(/\D/g, "")}@placeholder.local`,
         authProvider: "email",
         isEmailVerified: false,
