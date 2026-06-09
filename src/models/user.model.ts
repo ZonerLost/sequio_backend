@@ -23,7 +23,7 @@ const UserSchema = new Schema<IUser>(
         lng: { type: Number },
       },
     },
-    language: { type: String, enum: ["en", "fr"], default: "en" },
+    language: { type: String, default: "en" },
     authProvider: { type: String, enum: ["email", "google", "facebook"], default: "email" },
     googleId: { type: String },
     facebookId: { type: String },

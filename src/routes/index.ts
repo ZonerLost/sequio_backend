@@ -28,8 +28,21 @@ router.get("/languages", (_, res) => {
     success: true,
     message: "Supported languages retrieved",
     data: [
-      { code: "en", label: "English", nativeLabel: "English" },
-      { code: "fr", label: "French", nativeLabel: "Français" },
+      { code: "en", label: "English",    nativeLabel: "English" },
+      { code: "fr", label: "French",     nativeLabel: "Français" },
+      { code: "es", label: "Spanish",    nativeLabel: "Español" },
+      { code: "ar", label: "Arabic",     nativeLabel: "العربية" },
+      { code: "zh", label: "Chinese",    nativeLabel: "中文" },
+      { code: "hi", label: "Hindi",      nativeLabel: "हिन्दी" },
+      { code: "pt", label: "Portuguese", nativeLabel: "Português" },
+      { code: "de", label: "German",     nativeLabel: "Deutsch" },
+      { code: "it", label: "Italian",    nativeLabel: "Italiano" },
+      { code: "ur", label: "Urdu",       nativeLabel: "اردو" },
+      { code: "pa", label: "Punjabi",    nativeLabel: "ਪੰਜਾਬੀ" },
+      { code: "tr", label: "Turkish",    nativeLabel: "Türkçe" },
+      { code: "ko", label: "Korean",     nativeLabel: "한국어" },
+      { code: "ja", label: "Japanese",   nativeLabel: "日本語" },
+      { code: "ru", label: "Russian",    nativeLabel: "Русский" },
     ],
   });
 });

@@ -21,7 +21,7 @@ export const registerSchema = Joi.object({
   lastName: Joi.string().min(2).max(50).required().messages({
     "any.required": "Last name is required",
   }),
-  language: Joi.string().valid("en", "fr").default("en"),
+  language: Joi.string().default("en"),
 });
 
 export const loginSchema = Joi.object({
@@ -52,7 +52,7 @@ export const resetPasswordSchema = Joi.object({
 
 export const googleAuthSchema = Joi.object({
   idToken: Joi.string().required(),
-  language: Joi.string().valid("en", "fr").default("en"),
+  language: Joi.string().default("en"),
 });
 
 export const refreshTokenSchema = Joi.object({

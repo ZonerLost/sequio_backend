@@ -73,7 +73,7 @@ const options: swaggerJsdoc.Options = {
             password: { type: "string", example: "Password123" },
             firstName: { type: "string", example: "John" },
             lastName: { type: "string", example: "Doe" },
-            language: { type: "string", enum: ["en", "fr"], example: "en" },
+            language: { type: "string", example: "en", description: "BCP 47 language code (e.g. en, fr, es, ar, zh)" },
           },
         },
         LoginRequest: {
@@ -118,7 +118,7 @@ const options: swaggerJsdoc.Options = {
           required: ["idToken"],
           properties: {
             idToken: { type: "string", example: "google_id_token_here" },
-            language: { type: "string", enum: ["en", "fr"], example: "en" },
+            language: { type: "string", example: "en", description: "BCP 47 language code (e.g. en, fr, es, ar, zh)" },
           },
         },
         RefreshTokenRequest: {
@@ -138,7 +138,7 @@ const options: swaggerJsdoc.Options = {
             phone: { type: "string", example: "+14161234567" },
             bio: { type: "string", example: "I love renting outdoor gear.", maxLength: 500 },
             dateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
-            language: { type: "string", enum: ["en", "fr"], example: "en" },
+            language: { type: "string", example: "en", description: "BCP 47 language code (e.g. en, fr, es, ar, zh)" },
             location: {
               type: "object",
               properties: {

@@ -20,7 +20,7 @@ export interface IUser extends Document {
       lng: number;
     };
   };
-  language: "en" | "fr";
+  language: string;
   authProvider: "email" | "google" | "facebook";
   googleId?: string;
   facebookId?: string;

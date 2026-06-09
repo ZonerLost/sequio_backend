@@ -7,7 +7,7 @@ export const updateProfileSchema = Joi.object({
   phone: Joi.string().optional(),
   bio: Joi.string().max(500).optional(),
   dateOfBirth: Joi.date().optional(),
-  language: Joi.string().valid("en", "fr").optional(),
+  language: Joi.string().optional(),
   location: Joi.object({
     address: Joi.string().optional(),
     city: Joi.string().optional(),
