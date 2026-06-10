@@ -40,6 +40,7 @@ const UserSchema = new Schema<IUser>(
     isBanned: { type: Boolean, default: false },
     lastLoginAt: { type: Date },
     fcmToken: { type: String },
+    boostCredits: { type: Number, default: 0 },
     
   },
   { timestamps: true }

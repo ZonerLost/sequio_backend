@@ -37,6 +37,7 @@ export interface IUser extends Document {
   isBanned: boolean;
   lastLoginAt?: Date;
   fcmToken?: string;
+  boostCredits: number;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;

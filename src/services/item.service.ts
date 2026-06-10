@@ -1,9 +1,12 @@
 import { ItemRepository } from "../repository/item.repository";
+import { UserRepository } from "../repository/user.repository";
 import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS, CONSTANTS } from "../config/constants";
 import { IItem, IWeeklySchedule, PaginationMeta } from "../types";
 import { CO2_BY_CATEGORY } from "../models/eco.model";
+
+const userRepo = new UserRepository();
 
 const BOOST_DURATION_DAYS = 7;
 const BOOST_PRICE_CAD = 9.99;
@@ -250,15 +253,28 @@ export class ItemService {
   }
 
   async boostListing(itemId: string, ownerId: string): Promise<IItem> {
-    const item = await itemRepo.findById(itemId);
+    const [item, user] = await Promise.all([
+      itemRepo.findById(itemId),
+      userRepo.findById(ownerId),
+    ]);
+
     if (!item) throw new AppError("Item not found", HTTP_STATUS.NOT_FOUND);
     if (getOwnerId(item) !== ownerId) throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
     if (!item.isActive) throw new AppError("Cannot boost an inactive listing", HTTP_STATUS.BAD_REQUEST);
     if (item.isPaused) throw new AppError("Cannot boost a paused listing", HTTP_STATUS.BAD_REQUEST);
 
+    if (!user || user.boostCredits < 1) {
+      throw new AppError(
+        "No boost credits available. Purchase a boost from the app to continue.",
+        HTTP_STATUS.PAYMENT_REQUIRED
+      );
+    }
+
     const boostExpiresAt = new Date();
     boostExpiresAt.setDate(boostExpiresAt.getDate() + BOOST_DURATION_DAYS);
 
+    // Decrement credit and boost atomically
+    await userRepo.updateById(ownerId, { $inc: { boostCredits: -1 } } as any);
     const updated = await itemRepo.updateById(itemId, {
       isBoosted: true,
       boostedAt: new Date(),

@@ -26,4 +26,5 @@ export const ENV = {
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000", 10),
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX || "100", 10),
   REVENUECAT_API_KEY: process.env.REVENUECAT_API_KEY || "",
+  REVENUECAT_WEBHOOK_SECRET: process.env.REVENUECAT_WEBHOOK_SECRET || "",
 };

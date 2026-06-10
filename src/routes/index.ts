@@ -11,6 +11,7 @@ import disputeRoutes from "./dispute.routes";
 import paymentRoutes from "./payment.routes";
 import dashboardRoutes from "./dashboard.routes";
 import adminRoutes from "./admin.routes";
+import webhookRoutes from "./webhook.routes";
 
 const router = Router();
 
@@ -59,4 +60,5 @@ router.use("/disputes", disputeRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/admin", adminRoutes);
+router.use("/webhooks", webhookRoutes);
 export default router;
