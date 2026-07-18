@@ -9,10 +9,21 @@
  * @swagger
  * /chats:
  *   get:
- *     summary: Get all my conversations
+ *     summary: Get my conversations
+ *     description: |
+ *       Returns conversations the current user is a participant of.
+ *       Pass `?archived=true` to retrieve archived conversations instead.
+ *       Default (no param) returns only non-archived conversations.
  *     tags: [Chat]
  *     security:
  *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: archived
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Set to true to fetch archived conversations
  *     responses:
  *       200:
  *         description: Conversations retrieved
@@ -36,6 +47,8 @@
  *     responses:
  *       201:
  *         description: Conversation started
+ *       403:
+ *         description: Either participant has blocked the other
  */
 
 /**
@@ -63,6 +76,7 @@
  *
  *   post:
  *     summary: Send a message in a conversation
+ *     description: Blocked participants cannot send messages to each other.
  *     tags: [Chat]
  *     security:
  *       - BearerAuth: []
@@ -83,6 +97,8 @@
  *     responses:
  *       201:
  *         description: Message sent
+ *       403:
+ *         description: Either participant has blocked the other
  */
 
 /**
@@ -101,6 +117,50 @@
  *     responses:
  *       200:
  *         description: Conversation marked as read
+ */
+
+/**
+ * @swagger
+ * /chats/{id}/archive:
+ *   put:
+ *     summary: Archive a conversation
+ *     description: |
+ *       Moves the conversation to the caller's archive. The other participant
+ *       is unaffected — they still see it in their normal list.
+ *     tags: [Chat]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Conversation archived
+ *       404:
+ *         description: Conversation not found or user is not a participant
+ */
+
+/**
+ * @swagger
+ * /chats/{id}/unarchive:
+ *   put:
+ *     summary: Unarchive a conversation
+ *     description: Moves the conversation back to the caller's main list.
+ *     tags: [Chat]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Conversation unarchived
+ *       404:
+ *         description: Conversation not found or user is not a participant
  */
 
 /**

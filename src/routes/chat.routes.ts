@@ -18,6 +18,8 @@ router.post("/", validate(startConversationSchema), ctrl.startConversation.bind(
 router.get("/:id/messages", validate(messageQuerySchema, "query"), ctrl.getMessages.bind(ctrl));
 router.post("/:id/messages", validate(sendMessageSchema), ctrl.sendMessage.bind(ctrl));
 router.put("/:id/read", ctrl.markAsRead.bind(ctrl));
+router.put("/:id/archive", ctrl.archiveConversation.bind(ctrl));
+router.put("/:id/unarchive", ctrl.unarchiveConversation.bind(ctrl));
 router.delete("/:id/messages/:msgId", ctrl.deleteMessage.bind(ctrl));
 
 export default router;

@@ -14,7 +14,8 @@ export class ChatController {
 
   async getConversations(req: Request, res: Response, next: NextFunction) {
     try {
-      const conversations = await chatService.getConversations(req.user!.userId);
+      const archived = req.query.archived === "true";
+      const conversations = await chatService.getConversations(req.user!.userId, archived);
       sendSuccess(res, "Conversations retrieved", conversations);
     } catch (err) { next(err); }
   }
@@ -58,6 +59,20 @@ export class ChatController {
         req.user!.userId
       );
       sendSuccess(res, "Message deleted", message);
+    } catch (err) { next(err); }
+  }
+
+  async archiveConversation(req: Request, res: Response, next: NextFunction) {
+    try {
+      await chatService.archiveConversation(String(req.params.id), req.user!.userId);
+      sendSuccess(res, "Conversation archived");
+    } catch (err) { next(err); }
+  }
+
+  async unarchiveConversation(req: Request, res: Response, next: NextFunction) {
+    try {
+      await chatService.unarchiveConversation(String(req.params.id), req.user!.userId);
+      sendSuccess(res, "Conversation unarchived");
     } catch (err) { next(err); }
   }
 }

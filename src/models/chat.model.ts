@@ -21,6 +21,7 @@ export interface IConversation extends Document {
     createdAt: Date;
   };
   unreadCount: Map<string, number>;
+  archivedBy: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,6 +50,7 @@ const ConversationSchema = new Schema<IConversation>(
       createdAt: Date,
     },
     unreadCount: { type: Map, of: Number, default: {} },
+    archivedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }
 );

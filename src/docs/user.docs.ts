@@ -81,6 +81,100 @@
  *       400:
  *         description: No file uploaded
  *
+ * /users/blocked:
+ *   get:
+ *     tags: [Users]
+ *     summary: Get my blocked users list
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Blocked users retrieved
+ *
+ * /users/block/{userId}:
+ *   post:
+ *     tags: [Users]
+ *     summary: Block a user
+ *     description: |
+ *       Blocks the specified user. Once blocked, neither party can send
+ *       messages to the other until the block is removed.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *         example: 64f1a2b3c4d5e6f7a8b9c0d1
+ *     responses:
+ *       200:
+ *         description: User blocked
+ *       400:
+ *         description: Cannot block yourself
+ *       404:
+ *         description: User not found
+ *
+ *   delete:
+ *     tags: [Users]
+ *     summary: Unblock a user
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *         example: 64f1a2b3c4d5e6f7a8b9c0d1
+ *     responses:
+ *       200:
+ *         description: User unblocked
+ *       404:
+ *         description: User not found
+ *
+ * /users/{userId}/report:
+ *   post:
+ *     tags: [Users]
+ *     summary: Report a user
+ *     description: |
+ *       Submits a moderation report against another user. Only one report
+ *       per reporter–target pair is allowed. Reasons: `spam`, `fake_profile`,
+ *       `harassment`, `inappropriate_content`, `scam`, `other`.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *         example: 64f1a2b3c4d5e6f7a8b9c0d1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 enum: [spam, fake_profile, harassment, inappropriate_content, scam, other]
+ *               description:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Optional additional detail
+ *               conversationId:
+ *                 type: string
+ *                 description: Optional conversation context
+ *     responses:
+ *       201:
+ *         description: Report submitted
+ *       400:
+ *         description: Cannot report yourself or invalid reason
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: Report already submitted against this user
+ *
  * /users/addresses:
  *   post:
  *     tags: [Users]

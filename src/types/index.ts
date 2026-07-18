@@ -38,6 +38,7 @@ export interface IUser extends Document {
   lastLoginAt?: Date;
   fcmToken?: string;
   boostCredits: number;
+  blockedUsers: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;

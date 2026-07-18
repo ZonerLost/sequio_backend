@@ -46,4 +46,37 @@ export class UserRepository {
     const count = await UserModel.countDocuments({ email: email.toLowerCase() });
     return count > 0;
   }
+
+  async blockUser(userId: string, targetId: string): Promise<IUser | null> {
+    return UserModel.findByIdAndUpdate(
+      userId,
+      { $addToSet: { blockedUsers: targetId } },
+      { new: true }
+    ).exec();
+  }
+
+  async unblockUser(userId: string, targetId: string): Promise<IUser | null> {
+    return UserModel.findByIdAndUpdate(
+      userId,
+      { $pull: { blockedUsers: targetId } },
+      { new: true }
+    ).exec();
+  }
+
+  async getBlockedUsers(userId: string): Promise<IUser | null> {
+    return UserModel.findById(userId)
+      .populate("blockedUsers", "firstName lastName profilePhoto")
+      .exec();
+  }
+
+  // Single query: true if userId blocked targetId OR targetId blocked userId
+  async isBlocked(userId: string, targetId: string): Promise<boolean> {
+    const count = await UserModel.countDocuments({
+      $or: [
+        { _id: userId, blockedUsers: targetId },
+        { _id: targetId, blockedUsers: userId },
+      ],
+    });
+    return count > 0;
+  }
 }

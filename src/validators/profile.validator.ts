@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { REPORT_REASONS } from "../models/user-report.model";
 
 export const updateProfileSchema = Joi.object({
   email: Joi.string().email().lowercase().optional(),
@@ -18,4 +19,12 @@ export const updateProfileSchema = Joi.object({
       lng: Joi.number(),
     }).optional(),
   }).optional(),
+});
+
+export const reportUserSchema = Joi.object({
+  reason: Joi.string()
+    .valid(...REPORT_REASONS)
+    .required(),
+  description: Joi.string().max(500).optional(),
+  conversationId: Joi.string().optional(),
 });

@@ -3,7 +3,7 @@ import { UserController } from "../controllers/user.controller";
 import { AddressController } from "../controllers/address.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
-import { updateProfileSchema } from "../validators/profile.validator";
+import { updateProfileSchema, reportUserSchema } from "../validators/profile.validator";
 import { addAddressSchema } from "../validators/address.validator";
 import { upload } from "../middleware/upload.middleware";
 import { saveFCMTokenHandler } from "./notification.routes";
@@ -19,6 +19,14 @@ router.put("/profile", validate(updateProfileSchema), ctrl.updateProfile.bind(ct
 router.put("/profile/photo", upload.single("photo"), ctrl.updateProfilePhoto.bind(ctrl));
 router.post("/identity-verify", upload.single("document"), ctrl.uploadIdentityDocument.bind(ctrl));
 router.post("/fcm-token", ...saveFCMTokenHandler);
+
+// Block / unblock
+router.get("/blocked", ctrl.getBlockedUsers.bind(ctrl));
+router.post("/block/:userId", ctrl.blockUser.bind(ctrl));
+router.delete("/block/:userId", ctrl.unblockUser.bind(ctrl));
+
+// Report
+router.post("/:userId/report", validate(reportUserSchema), ctrl.reportUser.bind(ctrl));
 
 // Address management
 router.post("/addresses", validate(addAddressSchema), addressCtrl.addAddress.bind(addressCtrl));

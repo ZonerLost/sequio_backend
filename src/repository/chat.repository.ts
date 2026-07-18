@@ -1,5 +1,5 @@
 import { ConversationModel, IConversation, IMessage, MessageModel } from "../models/chat.model";
-import mongoose from "mongoose";
+import { Types } from "mongoose";
 
 export class ChatRepository {
   async findOrCreateConversation(
@@ -20,8 +20,12 @@ export class ChatRepository {
     });
   }
 
-  async getConversations(userId: string): Promise<IConversation[]> {
-    return ConversationModel.find({ participants: userId })
+  async getConversations(userId: string, archived = false): Promise<IConversation[]> {
+    const filter = archived
+      ? { participants: userId, archivedBy: userId }
+      : { participants: userId, archivedBy: { $ne: new Types.ObjectId(userId) } };
+
+    return ConversationModel.find(filter)
       .populate("participants", "firstName lastName profilePhoto")
       .populate("item", "title photos")
       .sort({ updatedAt: -1 });
@@ -34,6 +38,22 @@ export class ChatRepository {
     })
       .populate("participants", "firstName lastName profilePhoto")
       .populate("item", "title photos");
+  }
+
+  async archiveConversation(conversationId: string, userId: string): Promise<IConversation | null> {
+    return ConversationModel.findOneAndUpdate(
+      { _id: conversationId, participants: userId },
+      { $addToSet: { archivedBy: userId } },
+      { new: true }
+    );
+  }
+
+  async unarchiveConversation(conversationId: string, userId: string): Promise<IConversation | null> {
+    return ConversationModel.findOneAndUpdate(
+      { _id: conversationId, participants: userId },
+      { $pull: { archivedBy: new Types.ObjectId(userId) } },
+      { new: true }
+    );
   }
 
   async getMessages(
@@ -55,7 +75,6 @@ export class ChatRepository {
         deletedAt: { $exists: false },
       }),
     ]);
-    // Return in chronological order
     return { messages: messages.reverse(), total };
   }
 
@@ -70,18 +89,16 @@ export class ChatRepository {
       content: data.content,
     });
 
-    // Update conversation lastMessage and unread count
     await ConversationModel.findByIdAndUpdate(data.conversationId, {
       lastMessage: {
         content: data.content,
         sender: data.senderId,
         createdAt: new Date(),
       },
-      $inc: { [`unreadCount.${data.senderId}`]: 0 }, // sender stays 0
+      $inc: { [`unreadCount.${data.senderId}`]: 0 },
       updatedAt: new Date(),
     });
 
-    // Increment unread for other participants
     const conversation = await ConversationModel.findById(data.conversationId);
     if (conversation) {
       for (const p of conversation.participants) {

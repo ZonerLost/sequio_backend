@@ -1,4 +1,5 @@
 import { UserRepository } from "../repository/user.repository";
+import { UserReportRepository } from "../repository/user-report.repository";
 import { IUser } from "../types";
 import { OtpRepository } from "../repository/otp.repository";
 import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
@@ -7,9 +8,11 @@ import { generateOTP, getOTPExpiry } from "../helpers/otp.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { ENV } from "../config/env";
+import { REPORT_REASONS, ReportReason } from "../models/user-report.model";
 
 const userRepo = new UserRepository();
 const otpRepo = new OtpRepository();
+const reportRepo = new UserReportRepository();
 
 export class UserService {
   async getProfile(userId: string) {
@@ -99,11 +102,7 @@ export class UserService {
     return user;
   }
 
-  async updateProfilePhoto(
-    userId: string,
-    fileBuffer: Buffer,
-    mimeType: string
-  ) {
+  async updateProfilePhoto(userId: string, fileBuffer: Buffer, mimeType: string) {
     const user = await userRepo.findById(userId);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
     if (user.profilePhoto) {
@@ -113,16 +112,68 @@ export class UserService {
     return userRepo.updateById(userId, { profilePhoto: photoUrl });
   }
 
-  async uploadIdentityDocument(
-    userId: string,
-    fileBuffer: Buffer,
-    mimeType: string
-  ) {
+  async uploadIdentityDocument(userId: string, fileBuffer: Buffer, mimeType: string) {
     const docUrl = await uploadToS3(fileBuffer, mimeType, "identity-docs");
-    const user = await userRepo.updateById(userId, {
-      identityDocument: docUrl,
-    });
+    const user = await userRepo.updateById(userId, { identityDocument: docUrl });
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
     return { message: "Identity document uploaded. Verification in progress." };
+  }
+
+  async blockUser(userId: string, targetId: string) {
+    if (userId === targetId) {
+      throw new AppError("Cannot block yourself", HTTP_STATUS.BAD_REQUEST);
+    }
+    const target = await userRepo.findById(targetId);
+    if (!target) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+
+    await userRepo.blockUser(userId, targetId);
+  }
+
+  async unblockUser(userId: string, targetId: string) {
+    const target = await userRepo.findById(targetId);
+    if (!target) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+
+    await userRepo.unblockUser(userId, targetId);
+  }
+
+  async getBlockedUsers(userId: string) {
+    const user = await userRepo.getBlockedUsers(userId);
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+    return user.blockedUsers;
+  }
+
+  async reportUser(
+    reporterId: string,
+    targetId: string,
+    data: { reason: ReportReason; description?: string; conversationId?: string }
+  ) {
+    if (reporterId === targetId) {
+      throw new AppError("Cannot report yourself", HTTP_STATUS.BAD_REQUEST);
+    }
+    if (!REPORT_REASONS.includes(data.reason)) {
+      throw new AppError(
+        `Invalid reason. Must be one of: ${REPORT_REASONS.join(", ")}`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const target = await userRepo.findById(targetId);
+    if (!target) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+
+    const existing = await reportRepo.findExisting(reporterId, targetId);
+    if (existing) {
+      throw new AppError(
+        "You have already submitted a report against this user",
+        HTTP_STATUS.CONFLICT
+      );
+    }
+
+    return reportRepo.create({
+      reportedBy: reporterId,
+      reportedUser: targetId,
+      reason: data.reason,
+      description: data.description,
+      conversationId: data.conversationId,
+    });
   }
 }

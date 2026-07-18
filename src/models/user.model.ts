@@ -41,7 +41,7 @@ const UserSchema = new Schema<IUser>(
     lastLoginAt: { type: Date },
     fcmToken: { type: String },
     boostCredits: { type: Number, default: 0 },
-    
+    blockedUsers: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }
 );
