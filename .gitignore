@@ -4,3 +4,7 @@ dist/
 *.log
 .DS_Store
 coverage/
+
+# Local analysis docs (kept out of the repo)
+CLAUDE.md
+docs-analysis/
