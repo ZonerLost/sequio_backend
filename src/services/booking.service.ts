@@ -117,6 +117,7 @@ export class BookingService {
       endDate: end,
       totalDays,
       deliveryType: data.deliveryType,
+      bookingType: item.bookingType === "instant" ? "instant" : "request",
       deliveryAddress: data.deliveryAddress,
       deliveryFee,
       pickupTimeFrom: data.pickupTimeFrom,

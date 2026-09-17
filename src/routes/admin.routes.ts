@@ -21,6 +21,11 @@ const featureSchema = Joi.object({
   featuredUntil: Joi.date().optional(),
 });
 
+const statsQuerySchema = Joi.object({
+  start: Joi.date().optional(),
+  end: Joi.date().optional(),
+});
+
 const querySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
@@ -33,7 +38,7 @@ const querySchema = Joi.object({
 });
 
 // ── Stats ─────────────────────────────────────────────────
-router.get("/stats", ...adminGuard, ctrl.getPlatformStats.bind(ctrl));
+router.get("/stats", ...adminGuard, validate(statsQuerySchema, "query"), ctrl.getPlatformStats.bind(ctrl));
 
 // ── Users ─────────────────────────────────────────────────
 router.get("/users", ...adminGuard, validate(querySchema, "query"), ctrl.getUsers.bind(ctrl));

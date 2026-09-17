@@ -10,6 +10,19 @@
  * /admin/stats:
  *   get:
  *     summary: Get platform-wide statistics
+ *     description: >
+ *       All figures are all-time except users.new, bookings.byDeliveryType and
+ *       bookings.byBookingType, which count documents created between start and end
+ *       (all-time when omitted). Bookings created before bookingType existed count as request.
+ *     parameters:
+ *       - in: query
+ *         name: start
+ *         schema: { type: string, format: date-time }
+ *         description: Range start (inclusive), ISO 8601
+ *       - in: query
+ *         name: end
+ *         schema: { type: string, format: date-time }
+ *         description: Range end (inclusive), ISO 8601
  *     tags: [Admin]
  *     security:
  *       - BearerAuth: []
@@ -20,9 +33,10 @@
  *           application/json:
  *             example:
  *               data:
- *                 users: { total: 100, active: 95, banned: 5 }
+ *                 range: { start: "2026-09-01T00:00:00.000Z", end: "2026-09-30T23:59:59.999Z" }
+ *                 users: { total: 100, active: 95, banned: 5, new: 12 }
  *                 items: { total: 200, active: 180 }
- *                 bookings: { total: 500, completed: 300, pending: 50 }
+ *                 bookings: { total: 500, completed: 300, pending: 50, byDeliveryType: { delivery: 7, pickup: 13 }, byBookingType: { instant: 4, request: 16 } }
  *                 revenue: { total: 15000, currency: CAD }
  *                 eco: { totalCO2Saved: 2500 }
  */

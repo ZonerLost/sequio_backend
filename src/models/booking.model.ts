@@ -9,6 +9,7 @@ export interface IBooking extends Document {
   endDate: Date;
   totalDays: number;
   deliveryType: "pickup" | "delivery";
+  bookingType: "instant" | "request";
   deliveryAddress?: {
     label: string;
     street: string;
@@ -52,6 +53,7 @@ const BookingSchema = new Schema<IBooking>(
     endDate: { type: Date, required: true },
     totalDays: { type: Number, required: true, min: 1 },
     deliveryType: { type: String, enum: ["pickup", "delivery"], required: true },
+    bookingType: { type: String, enum: ["instant", "request"], default: "request" },
     deliveryAddress: {
       label: String,
       street: String,

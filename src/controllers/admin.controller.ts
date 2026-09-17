@@ -158,9 +158,10 @@ export class AdminController {
 
   // ── Stats ─────────────────────────────────────────────────
 
-  async getPlatformStats(_req: Request, res: Response, next: NextFunction) {
+  async getPlatformStats(req: Request, res: Response, next: NextFunction) {
     try {
-      const stats = await adminService.getPlatformStats();
+      const { start, end } = req.query as unknown as { start?: Date; end?: Date };
+      const stats = await adminService.getPlatformStats({ start, end });
       sendSuccess(res, "Platform stats retrieved", stats);
     } catch (err) { next(err); }
   }

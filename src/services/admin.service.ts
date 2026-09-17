@@ -233,7 +233,19 @@ export class AdminService {
 
   // ── Platform Stats ────────────────────────────────────────
 
-  async getPlatformStats() {
+  async getPlatformStats(range: { start?: Date; end?: Date } = {}) {
+    // users.new and the booking splits count documents created within the range
+    // (all-time when omitted); every other figure stays all-time as before.
+    const start = range.start ? new Date(range.start) : undefined;
+    const end = range.end ? new Date(range.end) : undefined;
+    if (start && end && end < start) {
+      throw new AppError("end must be on or after start", HTTP_STATUS.BAD_REQUEST);
+    }
+    const createdAt: Record<string, Date> = {};
+    if (start) createdAt.$gte = start;
+    if (end) createdAt.$lte = end;
+    const rangeMatch: Record<string, unknown> = Object.keys(createdAt).length ? { createdAt } : {};
+
     const [
       totalUsers,
       activeUsers,
@@ -245,6 +257,8 @@ export class AdminService {
       totalRevenue,
       totalCO2,
       totalReviews,
+      newUsers,
+      bookingSplits,
     ] = await Promise.all([
       UserModel.countDocuments(),
       UserModel.countDocuments({ isActive: true, isBanned: false }),
@@ -263,17 +277,36 @@ export class AdminService {
         { $group: { _id: null, totalCO2: { $sum: "$co2SavedKg" } } },
       ]),
       ReviewModel.countDocuments(),
+      UserModel.countDocuments(rangeMatch),
+      BookingModel.aggregate([
+        { $match: rangeMatch },
+        {
+          $facet: {
+            byDeliveryType: [{ $group: { _id: "$deliveryType", count: { $sum: 1 } } }],
+            // Bookings created before bookingType existed were all handled as requests
+            byBookingType: [
+              { $group: { _id: { $ifNull: ["$bookingType", "request"] }, count: { $sum: 1 } } },
+            ],
+          },
+        },
+      ]),
     ]);
 
     const bookingStatusMap = Object.fromEntries(
       bookingsByStatus.map((s: any) => [s._id, s.count])
     );
+    const countsOf = (rows: { _id: string; count: number }[] = []) =>
+      Object.fromEntries(rows.map((r) => [r._id, r.count]));
+    const byDeliveryType = countsOf(bookingSplits[0]?.byDeliveryType);
+    const byBookingType = countsOf(bookingSplits[0]?.byBookingType);
 
     return {
+      range: { start: start ?? null, end: end ?? null },
       users: {
         total: totalUsers,
         active: activeUsers,
         banned: bannedUsers,
+        new: newUsers,
       },
       items: {
         total: totalItems,
@@ -287,6 +320,14 @@ export class AdminService {
         completed: bookingStatusMap["completed"] ?? 0,
         cancelled: bookingStatusMap["cancelled"] ?? 0,
         declined: bookingStatusMap["declined"] ?? 0,
+        byDeliveryType: {
+          delivery: byDeliveryType["delivery"] ?? 0,
+          pickup: byDeliveryType["pickup"] ?? 0,
+        },
+        byBookingType: {
+          instant: byBookingType["instant"] ?? 0,
+          request: byBookingType["request"] ?? 0,
+        },
       },
       revenue: {
         total: parseFloat((totalRevenue[0]?.total ?? 0).toFixed(2)),
