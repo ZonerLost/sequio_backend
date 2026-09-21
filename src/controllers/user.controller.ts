@@ -50,6 +50,13 @@ export class UserController {
     } catch (err) { next(err); }
   }
 
+  async getPresence(req: Request, res: Response, next: NextFunction) {
+    try {
+      const presence = await userService.getPresence(String(req.params.userId));
+      sendSuccess(res, "Presence retrieved", presence);
+    } catch (err) { next(err); }
+  }
+
   async blockUser(req: Request, res: Response, next: NextFunction) {
     try {
       await userService.blockUser(req.user!.userId, String(req.params.userId));

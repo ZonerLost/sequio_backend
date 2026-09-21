@@ -20,6 +20,9 @@ router.put("/profile/photo", upload.single("photo"), ctrl.updateProfilePhoto.bin
 router.post("/identity-verify", upload.single("document"), ctrl.uploadIdentityDocument.bind(ctrl));
 router.post("/fcm-token", ...saveFCMTokenHandler);
 
+// Presence (online / last seen)
+router.get("/:userId/presence", ctrl.getPresence.bind(ctrl));
+
 // Block / unblock
 router.get("/blocked", ctrl.getBlockedUsers.bind(ctrl));
 router.post("/block/:userId", ctrl.blockUser.bind(ctrl));

@@ -46,8 +46,15 @@ export class ChatController {
 
   async markAsRead(req: Request, res: Response, next: NextFunction) {
     try {
-      await chatService.markAsRead(String(req.params.id), req.user!.userId);
-      sendSuccess(res, "Conversation marked as read");
+      const result = await chatService.markAsRead(String(req.params.id), req.user!.userId);
+      sendSuccess(res, "Conversation marked as read", result);
+    } catch (err) { next(err); }
+  }
+
+  async getUnreadSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const summary = await chatService.getUnreadSummary(req.user!.userId);
+      sendSuccess(res, "Unread summary retrieved", summary);
     } catch (err) { next(err); }
   }
 

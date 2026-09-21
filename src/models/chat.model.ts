@@ -6,6 +6,8 @@ export interface IMessage extends Document {
   sender: mongoose.Types.ObjectId;
   content: string;
   isRead: boolean;
+  deliveredAt?: Date;
+  readAt?: Date;
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +34,8 @@ const MessageSchema = new Schema<IMessage>(
     sender: { type: Schema.Types.ObjectId, ref: "User", required: true },
     content: { type: String, required: true, trim: true, maxlength: 2000 },
     isRead: { type: Boolean, default: false },
+    deliveredAt: { type: Date },
+    readAt: { type: Date },
     deletedAt: { type: Date },
   },
   { timestamps: true }
@@ -39,6 +43,9 @@ const MessageSchema = new Schema<IMessage>(
 
 MessageSchema.index({ conversation: 1, createdAt: -1 });
 MessageSchema.index({ sender: 1 });
+// receipt sweeps: unread / undelivered messages addressed to a participant
+MessageSchema.index({ conversation: 1, sender: 1, readAt: 1 });
+MessageSchema.index({ conversation: 1, sender: 1, deliveredAt: 1 });
 
 const ConversationSchema = new Schema<IConversation>(
   {

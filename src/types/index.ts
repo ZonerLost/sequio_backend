@@ -37,6 +37,8 @@ export interface IUser extends Document {
   isBanned: boolean;
   lastLoginAt?: Date;
   fcmToken?: string;
+  isOnline: boolean;
+  lastSeenAt?: Date;
   boostCredits: number;
   blockedUsers: Types.ObjectId[];
   createdAt: Date;
@@ -121,6 +123,11 @@ export interface IItem extends Document {
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface Presence {
+  isOnline: boolean;
+  lastSeenAt: Date | null;
 }
 
 export interface IOtp extends Document {

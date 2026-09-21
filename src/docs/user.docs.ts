@@ -131,6 +131,36 @@
  *       404:
  *         description: User not found
  *
+ * /users/{userId}/presence:
+ *   get:
+ *     summary: Online state and last seen time of a user
+ *     description: |
+ *       `isOnline` is true while that user holds a live socket. `lastSeenAt` is when they
+ *       were last connected. Presence also arrives live via the `presence_update` socket
+ *       event and inside the conversation list.
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Presence retrieved
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Presence retrieved
+ *               data: { userId: 64f..., isOnline: true, lastSeenAt: "2026-09-21T09:44:31.000Z" }
+ *       404:
+ *         description: User not found
+ */
+
+/**
+ * @swagger
  * /users/{userId}/report:
  *   post:
  *     tags: [Users]

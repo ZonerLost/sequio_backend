@@ -14,6 +14,8 @@ const ctrl = new ChatController();
 router.use(authenticate);
 
 router.get("/", ctrl.getConversations.bind(ctrl));
+// must stay above the /:id routes so it is not captured as a conversation id
+router.get("/unread-count", ctrl.getUnreadSummary.bind(ctrl));
 router.post("/", validate(startConversationSchema), ctrl.startConversation.bind(ctrl));
 router.get("/:id/messages", validate(messageQuerySchema, "query"), ctrl.getMessages.bind(ctrl));
 router.post("/:id/messages", validate(sendMessageSchema), ctrl.sendMessage.bind(ctrl));

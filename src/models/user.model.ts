@@ -40,6 +40,8 @@ const UserSchema = new Schema<IUser>(
     isBanned: { type: Boolean, default: false },
     lastLoginAt: { type: Date },
     fcmToken: { type: String },
+    isOnline: { type: Boolean, default: false },
+    lastSeenAt: { type: Date },
     boostCredits: { type: Number, default: 0 },
     blockedUsers: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },

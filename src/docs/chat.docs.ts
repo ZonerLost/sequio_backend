@@ -1,12 +1,5 @@
 /**
  * @swagger
- * tags:
- *   name: Chat
- *   description: In-app messaging
- */
-
-/**
- * @swagger
  * /chats:
  *   get:
  *     summary: Get my conversations
@@ -14,6 +7,9 @@
  *       Returns conversations the current user is a participant of.
  *       Pass `?archived=true` to retrieve archived conversations instead.
  *       Default (no param) returns only non-archived conversations.
+ *
+ *       Each participant carries `isOnline` and `lastSeenAt`, and each conversation
+ *       carries `unread`: the caller's unread count.
  *     tags: [Chat]
  *     security:
  *       - BearerAuth: []
@@ -49,6 +45,26 @@
  *         description: Conversation started
  *       403:
  *         description: Either participant has blocked the other
+ */
+
+/**
+ * @swagger
+ * /chats/unread-count:
+ *   get:
+ *     summary: Unread message badge for the current user
+ *     description: Total unread messages and how many conversations they sit in.
+ *     tags: [Chat]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Unread summary retrieved
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Unread summary retrieved
+ *               data: { total: 3, conversations: 2 }
  */
 
 /**
@@ -106,6 +122,10 @@
  * /chats/{id}/read:
  *   put:
  *     summary: Mark all messages in conversation as read
+ *     description: |
+ *       Clears the caller's unread count and stamps `readAt` on the messages they had
+ *       not read. Senders receive a `messages_read` socket event, which is what drives
+ *       a "seen" tick in the client.
  *     tags: [Chat]
  *     security:
  *       - BearerAuth: []

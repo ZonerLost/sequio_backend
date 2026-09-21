@@ -9,6 +9,7 @@ import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { ENV } from "../config/env";
 import { REPORT_REASONS, ReportReason } from "../models/user-report.model";
+import { presenceOf } from "../helpers/presence.helper";
 
 const userRepo = new UserRepository();
 const otpRepo = new OtpRepository();
@@ -117,6 +118,13 @@ export class UserService {
     const user = await userRepo.updateById(userId, { identityDocument: docUrl });
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
     return { message: "Identity document uploaded. Verification in progress." };
+  }
+
+  /** Online state and last-seen time, safe to show to any signed-in user. */
+  async getPresence(targetId: string) {
+    const user = await userRepo.findById(targetId);
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+    return { userId: targetId, ...presenceOf(targetId, user) };
   }
 
   async blockUser(userId: string, targetId: string) {
