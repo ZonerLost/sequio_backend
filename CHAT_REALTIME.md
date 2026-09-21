@@ -18,7 +18,8 @@ import { io } from "socket.io-client";
 
 const socket = io("https://au2p3vkiqi.us-east-1.awsapprunner.com", {
   auth: { token: accessToken },
-  transports: ["websocket"],
+  transports: ["polling"], // the host rejects WebSocket upgrades — see the note below
+  upgrade: false,
 });
 
 socket.on("connect_error", async (err) => {
@@ -34,10 +35,17 @@ Dart/Flutter uses the same events via `socket_io_client`:
 
 ```dart
 final socket = IO.io(origin, IO.OptionBuilder()
-    .setTransports(['websocket'])
+    .setTransports(['polling'])          // not ['websocket'] — see the note below
     .setAuth({'token': accessToken})
     .build());
 ```
+
+> **Use the polling transport.** The API runs on AWS App Runner, which answers a WebSocket
+> upgrade with **403**. socket.io then runs over HTTP long-polling, which is what the live
+> checks were run against — messages, receipts and presence all work, with about a second of
+> latency at worst. Forcing `transports: ['websocket']` fails to connect at all. If the API
+> ever moves to a host that allows WebSockets, drop these two options and the client upgrades
+> on its own.
 
 On connect the server puts the socket into a room per conversation the user belongs to, so **messages arrive without any join call**. The token is checked at connect time, and banned or deactivated accounts are refused.
 
@@ -199,6 +207,7 @@ Delivered means the recipient's app was connected — not that they looked at it
 - **Blocked users:** sending returns **403** `"Cannot send messages to this user"`. Show it as a normal message, not an error dialog.
 - **Not a participant:** any conversation endpoint returns **404** `"Conversation not found"`, and `join_conversation` acks `{ ok: false }`.
 - **Deleted messages** are soft-deleted: they disappear from history and you get `message_deleted`.
+- **Never force the websocket transport.** The host refuses the upgrade (403); connect with polling as in §1.
 - **A notification row is created only when you are disconnected.** While your socket is live you get `new_message` instead, so the notification list is not filled with one row per message.
 - **Push notifications are not sent yet.** `POST /users/fcm-token` stores the token, but the server-side FCM send is still a stub, so nothing arrives while the app is closed. In-app notifications do arrive over the socket as `conversation_updated` with `type: "notification"`.
 
