@@ -284,4 +284,67 @@ export class ChatRepository {
       { new: true }
     );
   }
+
+  /**
+   * Puts the conversation row back in step with its messages after a soft delete.
+   * Two things go stale otherwise: a badge that counts a message nobody can open
+   * any more, and a `lastMessage` preview of text that is gone from the thread.
+   */
+  async reconcileAfterDelete(conversationId: string, message: IMessage): Promise<void> {
+    const conversation = await ConversationModel.findById(conversationId)
+      .select("participants lastMessage unreadCount")
+      .lean();
+    if (!conversation) return;
+
+    const senderId = toId(message.sender);
+    const unread = (conversation.unreadCount as unknown as Record<string, number>) ?? {};
+    const $inc: Record<string, number> = {};
+    const $set: Record<string, unknown> = {};
+    const $unset: Record<string, string> = {};
+
+    // Unread is per recipient, so only those who had not read it yet lose a count.
+    if (!message.readAt) {
+      for (const participant of (conversation.participants ?? []).map(toId)) {
+        if (participant === senderId) continue;
+        if ((unread[participant] ?? 0) > 0) $inc[`unreadCount.${participant}`] = -1;
+      }
+    }
+
+    // Replace the preview only when the deleted message is the one being previewed.
+    const last = conversation.lastMessage;
+    const wasLastMessage =
+      !!last &&
+      toId(last.sender) === senderId &&
+      new Date(last.createdAt).getTime() === message.createdAt.getTime();
+
+    if (wasLastMessage) {
+      const previous = await MessageModel.findOne({
+        conversation: conversationId,
+        deletedAt: { $exists: false },
+      })
+        .sort({ createdAt: -1 })
+        .select("content sender createdAt")
+        .lean();
+
+      if (previous) {
+        $set.lastMessage = {
+          content: previous.content,
+          sender: previous.sender,
+          createdAt: previous.createdAt,
+        };
+      } else {
+        $unset.lastMessage = "";
+      }
+    }
+
+    if (!Object.keys($inc).length && !Object.keys($set).length && !Object.keys($unset).length) {
+      return;
+    }
+
+    await ConversationModel.updateOne({ _id: conversationId }, {
+      ...(Object.keys($inc).length ? { $inc } : {}),
+      ...(Object.keys($set).length ? { $set } : {}),
+      ...(Object.keys($unset).length ? { $unset } : {}),
+    });
+  }
 }

@@ -5,6 +5,7 @@ import { ENV } from "./config/env";
 import { logger } from "./config/logger";
 import { JwtPayload } from "./types";
 import { UserModel } from "./models/user.model";
+import { IMessage } from "./models/chat.model";
 import { ChatRepository } from "./repository/chat.repository";
 import {
   clearStalePresence,
@@ -20,14 +21,20 @@ import {
  * Realtime layer. Clients connect with their access token, either as
  * `auth.token` or an `Authorization: Bearer …` header.
  *
+ * Every event carries the conversation it concerns as `conversationId`. A message
+ * document also carries `conversation` (its own field, as returned by REST); the two
+ * always hold the same value on `new_message`.
+ *
  * server -> client
  *   new_message          a message was added to a conversation you are in
- *                        { _id, conversation, sender, content, createdAt, … }
+ *                        { _id, conversationId, conversation, sender, content, … }
  *   conversation_updated { type: "conversation", conversationId, lastMessage, unreadCount }
  *                        { type: "notification", notification }   (notification service)
  *   messages_delivered   { conversationId, messageIds, deliveredAt, recipientId }
  *   messages_read        { conversationId, messageIds, readAt, readerId }
- *   presence_update      { userId, isOnline, lastSeenAt }
+ *   message_deleted      { conversationId, messageId, deletedBy }
+ *   presence_update      { userId, isOnline, lastSeenAt }   both on connect and on
+ *                        disconnect, to everyone the user has a conversation with
  *   user_typing          { userId, conversationId }
  *   user_stop_typing     { userId, conversationId }
  *
@@ -53,7 +60,11 @@ interface SocketUser {
 export const initSocket = (httpServer: HttpServer): SocketServer => {
   const server = new SocketServer(httpServer, {
     cors: { origin: "*", methods: ["GET", "POST"] },
-    pingTimeout: 60000,
+    // A client that vanishes without a close frame (app killed, network dropped) is only
+    // noticed when a ping goes unanswered, and until then it still counts as online.
+    // 20s + 25s caps that at ~45s while leaving a slow mobile connection 25s to answer.
+    pingInterval: 20000,
+    pingTimeout: 25000,
   });
 
   // Authenticate the handshake, then confirm the account is still usable.
@@ -200,8 +211,14 @@ export const emitToConversation = (
   io?.to(conversationRoom(conversationId)).emit(event, payload);
 };
 
-export const emitNewMessage = (conversationId: string, message: unknown): void =>
-  emitToConversation(conversationId, "new_message", message);
+/**
+ * A message document names its conversation `conversation`; every *event* names it
+ * `conversationId`. Both go out: the payload stays byte-identical to the REST message
+ * shape, and a client can read `conversationId` off any chat event without
+ * special-casing this one. Emit `new_message` only through here.
+ */
+export const emitNewMessage = (conversationId: string, message: IMessage): void =>
+  emitToConversation(conversationId, "new_message", { ...message.toObject(), conversationId });
 
 export const emitConversationUpdate = (userId: string, payload: unknown): void =>
   emitToUser(userId, "conversation_updated", payload);

@@ -5,7 +5,7 @@ import { HTTP_STATUS } from "../config/constants";
 import { buildPagination } from "../helpers/pagination.helper";
 import { getId } from "../helpers/id.helper";
 import { isConnected, presenceOf } from "../helpers/presence.helper";
-import { emitToConversation, emitToUser, joinUserToConversation } from "../socket";
+import { emitNewMessage, emitToConversation, emitToUser, joinUserToConversation } from "../socket";
 import { notifyMessageReceived } from "../helpers/notification.triggers";
 import { IConversation, IMessage } from "../models/chat.model";
 
@@ -115,7 +115,7 @@ export class ChatService {
       deliveredAt,
     });
 
-    emitToConversation(conversationId, "new_message", message);
+    emitNewMessage(conversationId, message);
 
     const summary = await chatRepo.getSummary(conversationId);
     for (const participantId of summary?.participants ?? [senderId, ...recipientIds]) {
@@ -200,6 +200,21 @@ export class ChatService {
       messageId,
       deletedBy: userId,
     });
+
+    // Deleting changes the list row too — the preview, and the badge when the message
+    // was still unread — so the same conversation_updated every other write sends goes
+    // out here as well, and a client needs no special resync path for deletes.
+    await chatRepo.reconcileAfterDelete(conversationId, message);
+    const summary = await chatRepo.getSummary(conversationId);
+    for (const participantId of summary?.participants ?? []) {
+      emitToUser(participantId, "conversation_updated", {
+        type: "conversation",
+        conversationId,
+        lastMessage: summary?.lastMessage ?? null,
+        unreadCount: summary?.unreadCount?.[participantId] ?? 0,
+        updatedAt: summary?.updatedAt ?? new Date(),
+      });
+    }
 
     return message;
   }

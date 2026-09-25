@@ -7,6 +7,15 @@ Everything an app needs for messaging: live messages, sent/delivered/seen ticks,
 - **Auth:** the access token from login, on both REST and socket
 - **Swagger:** `/api-docs` (the "Chat" tag repeats the event list)
 
+**Changed 2026-09-25** (all additive — nothing that worked before stops working):
+
+1. `new_message` now carries **`conversationId`** as well as `conversation`, so every chat event
+   names the conversation the same way. A client reading either key is fine.
+2. Deleting a message now also emits **`conversation_updated`**, and the badge no longer counts a
+   deleted unread message. A delete-triggered resync is no longer needed.
+3. Ungraceful disconnects are detected in ~45 s instead of ~85 s, so an "Online" dot clears
+   sooner. `presence_update` with `isOnline: false` always did fire — see §2.
+
 ---
 
 ## 1. Connect
@@ -55,15 +64,19 @@ On connect the server puts the socket into a room per conversation the user belo
 
 ### Server → client
 
+**Every event carries `conversationId`.** A message also carries its own `conversation` field
+(the REST shape), and on `new_message` the two always hold the same value — read whichever you
+prefer, but `conversationId` works on all six events.
+
 | Event | Payload | Use it for |
 |---|---|---|
-| `new_message` | the message (see §4) | append to the open chat; bump the list |
+| `new_message` | the message (see §4), plus `conversationId` | append to the open chat; bump the list |
 | `conversation_updated` | `{ type: "conversation", conversationId, lastMessage, unreadCount, updatedAt }` | update the conversation list row + badge |
 | `conversation_updated` | `{ type: "notification", notification }` | a notification, **not** a chat update — route it elsewhere |
 | `messages_delivered` | `{ conversationId, messageIds, deliveredAt, recipientId }` | single tick → double tick |
 | `messages_read` | `{ conversationId, messageIds, readAt, readerId }` | double tick → "seen" |
 | `message_deleted` | `{ conversationId, messageId, deletedBy }` | remove the bubble |
-| `presence_update` | `{ userId, isOnline, lastSeenAt }` | online dot / "last seen …" |
+| `presence_update` | `{ userId, isOnline, lastSeenAt }` | online dot / "last seen …" — fires **both** ways |
 | `user_typing` / `user_stop_typing` | `{ userId, conversationId }` | typing indicator |
 
 Real payloads, captured from a running server:
@@ -85,6 +98,21 @@ Real payloads, captured from a running server:
 // presence_update
 { "userId": "6ab0…", "isOnline": true, "lastSeenAt": "2026-09-21T09:56:55.106Z" }
 ```
+
+**Presence fires on the way down too.** `isOnline: false` is emitted when a user's **last**
+socket closes, to everyone they have a conversation with, so an online dot does turn back off
+without leaving the screen. Two things to expect:
+
+- With several devices, one of them closing emits nothing — the user is still online elsewhere.
+- A clean close (app closed, `socket.disconnect()`) is immediate. A device that vanishes without
+  a close frame — killed app, tunnel dropped, phone off network — is only noticed when a
+  heartbeat goes unanswered, **up to ~45 s**. That is the price of not flapping people offline
+  on a brief mobile stall.
+
+**Deleting a message also emits `conversation_updated`**, right after `message_deleted`, so the
+list row fixes itself: the preview falls back to the newest surviving message (`lastMessage` is
+`null` when the last one is gone) and the badge stops counting a deleted unread message. You do
+not need a resync on delete.
 
 ### Client → server
 
@@ -130,12 +158,15 @@ All need `Authorization: Bearer <accessToken>` and answer with `{ success, messa
 > only once delivered and `readAt` only once read, and `profilePhoto` is missing when the user
 > has none. Test with `if (message.deliveredAt)`, never `=== null`.
 
-**Message** — exactly as returned by `POST /chats/{id}/messages` and sent as `new_message`:
+**Message** — as returned by `POST /chats/{id}/messages` and sent as `new_message`. The
+`conversationId` line is added by the **socket event only**; the REST response carries
+`conversation` alone, and the two always match:
 
 ```json
 {
   "_id": "6ab0ff676cb94bb72fa6d942",
   "conversation": "6ab0ff676cb94bb72fa6d932",
+  "conversationId": "6ab0ff676cb94bb72fa6d932",
   "sender": { "_id": "6ab0ff666cb94bb72fa6d90d", "firstName": "Alice", "lastName": "T" },
   "content": "Are you free Saturday?",
   "isRead": false,
@@ -206,7 +237,8 @@ Delivered means the recipient's app was connected — not that they looked at it
 - **Tokens expire (15 min default).** An open socket keeps working, but reconnects fail until you refresh. Handle `connect_error` as in §1.
 - **Blocked users:** sending returns **403** `"Cannot send messages to this user"`. Show it as a normal message, not an error dialog.
 - **Not a participant:** any conversation endpoint returns **404** `"Conversation not found"`, and `join_conversation` acks `{ ok: false }`.
-- **Deleted messages** are soft-deleted: they disappear from history and you get `message_deleted`.
+- **Deleted messages** are soft-deleted: they disappear from history and you get `message_deleted`, followed by a `conversation_updated` for the list row.
+- **Presence is per user, not per socket.** A user on two devices only goes offline when the second one closes, and an ungraceful disconnect takes up to ~45 s to register (§2).
 - **Never force the websocket transport.** The host refuses the upgrade (403); connect with polling as in §1.
 - **A notification row is created only when you are disconnected.** While your socket is live you get `new_message` instead, so the notification list is not filled with one row per message.
 - **Push notifications are not sent yet.** `POST /users/fcm-token` stores the token, but the server-side FCM send is still a stub, so nothing arrives while the app is closed. In-app notifications do arrive over the socket as `conversation_updated` with `type: "notification"`.
