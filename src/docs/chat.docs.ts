@@ -119,6 +119,52 @@
 
 /**
  * @swagger
+ * /chats/{id}/messages/image:
+ *   post:
+ *     summary: Send an image as a message
+ *     description: |
+ *       Uploads an image to S3 and posts it as a message in the conversation, with the optional
+ *       caption stored in `content`. Delivery and read receipts, socket events and notifications are
+ *       identical to a text message: the response and the `new_message` event carry
+ *       `type: "image"` and `imageUrl`, and `GET /chats/{id}/messages` returns the same fields for
+ *       history. Deleting the message also removes the S3 object.
+ *     tags: [Chat]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [image]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: JPEG, PNG or WebP image, max 5MB
+ *               caption:
+ *                 type: string
+ *                 maxLength: 2000
+ *                 description: Optional text shown with the image; omit it for an image on its own
+ *     responses:
+ *       201:
+ *         description: Message sent
+ *       400:
+ *         description: No image uploaded, wrong field name, unsupported type, or over 5MB
+ *       403:
+ *         description: Either participant has blocked the other
+ *       404:
+ *         description: Conversation not found, or you are not a participant
+ */
+
+/**
+ * @swagger
  * /chats/{id}/read:
  *   put:
  *     summary: Mark all messages in conversation as read

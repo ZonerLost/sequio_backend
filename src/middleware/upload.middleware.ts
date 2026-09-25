@@ -1,5 +1,6 @@
 import multer from "multer";
-import { CONSTANTS } from "../config/constants";
+import { CONSTANTS, HTTP_STATUS } from "../config/constants";
+import { AppError } from "./error.middleware";
 
 const storage = multer.memoryStorage();
 
@@ -11,7 +12,8 @@ const fileFilter = (
   if (CONSTANTS.ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("Only JPEG, PNG and WebP images are allowed"));
+    // An AppError so the handler answers 400; a bare Error here fell through to 500.
+    cb(new AppError("Only JPEG, PNG and WebP images are allowed", HTTP_STATUS.BAD_REQUEST));
   }
 };
 

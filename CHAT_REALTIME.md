@@ -146,7 +146,38 @@ All need `Authorization: Bearer <accessToken>` and answer with `{ success, messa
 | PUT | `/chats/{id}/archive` | hide the conversation from the default list |
 | PUT | `/chats/{id}/unarchive` | bring it back (`GET /chats?archived=true` lists archived ones) |
 | DELETE | `/chats/{id}/messages/{msgId}` | soft-delete your own message |
+| POST | `/chats/{id}/messages/image` | send an image — `multipart/form-data`, file field `image`, optional `caption` |
 | GET | `/users/{userId}/presence` | `{ userId, isOnline, lastSeenAt }` |
+
+**Image messages.** `POST /chats/{id}/messages/image` is `multipart/form-data` with the file in the
+field **`image`** and an optional text field **`caption`**. JPEG, PNG or WebP, **max 5 MB** — a wrong
+field name, an unsupported type or an oversized file all answer **400** with a message that says which.
+Everything after the upload is the text path, so receipts, `new_message`, `conversation_updated` and
+notifications behave identically.
+
+The message gains two fields, on the REST response, the socket event and in history alike:
+
+```json
+{
+  "_id": "6ab61423bcde82db5bf416f4",
+  "conversationId": "6ab6141fbcde82db5bf416da",
+  "type": "image",
+  "imageUrl": "https://zonerlost-media.s3.us-east-1.amazonaws.com/chat-photos/…jpg",
+  "content": "optional caption, or \"\" when there is none",
+  "isRead": false,
+  "deliveredAt": "2026-09-25T06:26:42.043Z",
+  "createdAt": "2026-09-25T06:26:41.998Z"
+}
+```
+
+- **`type` is `"text"` or `"image"`.** Messages sent before this feature have no `type` field at all —
+  treat a missing `type` as `"text"`.
+- `content` holds the caption and is `""` for an image with no caption, so render on `type`, not on
+  whether `content` is empty.
+- `conversation.lastMessage` carries `type` too, so a conversation list can show "📷 Photo" for an
+  uncaptioned image without fetching the message.
+- `DELETE /chats/{id}/messages/{msgId}` works unchanged and also deletes the S3 object, so treat the
+  `imageUrl` of a deleted message as gone rather than cacheable.
 
 **Message paging:** page 1 is the **most recent** 30 messages, ordered oldest → newest inside the page; page 2 is the 30 before those. `pagination` sits at the top level of the response, next to `data`.
 

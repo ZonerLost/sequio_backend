@@ -1,10 +1,15 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+/** A message is text, or an image with an optional caption carried in `content`. */
+export type MessageType = "text" | "image";
+
 export interface IMessage extends Document {
   _id: mongoose.Types.ObjectId;
   conversation: mongoose.Types.ObjectId;
   sender: mongoose.Types.ObjectId;
   content: string;
+  type: MessageType;
+  imageUrl?: string;
   isRead: boolean;
   deliveredAt?: Date;
   readAt?: Date;
@@ -21,6 +26,7 @@ export interface IConversation extends Document {
     content: string;
     sender: mongoose.Types.ObjectId;
     createdAt: Date;
+    type?: MessageType;
   };
   unreadCount: Map<string, number>;
   archivedBy: mongoose.Types.ObjectId[];
@@ -32,7 +38,17 @@ const MessageSchema = new Schema<IMessage>(
   {
     conversation: { type: Schema.Types.ObjectId, ref: "Conversation", required: true },
     sender: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
+    // An image message may have no caption at all, so content is required for text only.
+    content: {
+      type: String,
+      required: function (this: IMessage) {
+        return this.type !== "image";
+      },
+      trim: true,
+      maxlength: 2000,
+    },
+    type: { type: String, enum: ["text", "image"], default: "text" },
+    imageUrl: { type: String },
     isRead: { type: Boolean, default: false },
     deliveredAt: { type: Date },
     readAt: { type: Date },
@@ -55,6 +71,8 @@ const ConversationSchema = new Schema<IConversation>(
       content: String,
       sender: { type: Schema.Types.ObjectId, ref: "User" },
       createdAt: Date,
+      // denormalised so a conversation list can render "photo" without fetching the message
+      type: { type: String, enum: ["text", "image"] },
     },
     unreadCount: { type: Map, of: Number, default: {} },
     archivedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],

@@ -58,6 +58,22 @@ export class ChatController {
     } catch (err) { next(err); }
   }
 
+  async sendImageMessage(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        res.status(400).json({ success: false, message: "No image uploaded" });
+        return;
+      }
+      const message = await chatService.sendImageMessage(
+        String(req.params.id),
+        req.user!.userId,
+        req.file,
+        req.body.caption
+      );
+      sendCreated(res, "Message sent", message);
+    } catch (err) { next(err); }
+  }
+
   async deleteMessage(req: Request, res: Response, next: NextFunction) {
     try {
       const message = await chatService.deleteMessage(

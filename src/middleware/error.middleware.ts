@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { logger } from "../config/logger";
 import { sendError } from "../helpers/response.helper";
-import { HTTP_STATUS } from "../config/constants";
+import { CONSTANTS, HTTP_STATUS } from "../config/constants";
+import type { MulterError } from "multer";
 
 export class AppError extends Error {
   statusCode: number;
@@ -33,6 +34,19 @@ export const errorHandler = (
   }
   if (err.name === "CastError") {
     sendError(res, "Invalid ID format", HTTP_STATUS.BAD_REQUEST);
+    return;
+  }
+  // Multer rejects an oversized file, a surplus file or an unexpected field name by throwing.
+  // Without this every upload route answered 500 — a server error for a client mistake, which
+  // tells a client to retry when it should fix the request.
+  if (err.name === "MulterError") {
+    const { code, field } = err as MulterError;
+    const messages: Record<string, string> = {
+      LIMIT_FILE_SIZE: `File must be ${CONSTANTS.MAX_FILE_SIZE / (1024 * 1024)}MB or smaller`,
+      LIMIT_FILE_COUNT: "Too many files uploaded",
+      LIMIT_UNEXPECTED_FILE: `Unexpected file field${field ? ` "${field}"` : ""}`,
+    };
+    sendError(res, messages[code] ?? err.message, HTTP_STATUS.BAD_REQUEST);
     return;
   }
   sendError(res, "Internal server error", HTTP_STATUS.INTERNAL_SERVER);

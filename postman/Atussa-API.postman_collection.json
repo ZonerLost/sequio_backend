@@ -1729,7 +1729,18 @@
                 "photos"
               ]
             },
-            "description": "multipart/form-data. Field `photos`, up to 5 files, 5 MB each.\n\n_Auth: bearer_"
+            "description": "multipart/form-data. Field `photos`, up to 5 files, 5 MB each.\n\n_Auth: bearer_",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "photos",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick up to 5 files (JPEG/PNG/WebP, 5 MB each)"
+                }
+              ]
+            }
           },
           "event": [
             {
@@ -2636,6 +2647,57 @@
                   "language": "json"
                 }
               }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ok = pm.response.code < 300;",
+                  "pm.test(\"2xx\", () => pm.expect(pm.response.code).to.be.below(300));",
+                  "const body = pm.response.json();",
+                  "const d = body && body.data;",
+                  "if (ok && d) pm.collectionVariables.set(\"messageId\", d._id || d.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send image message",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chats/{{conversationId}}/messages/image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chats",
+                "{{conversationId}}",
+                "messages",
+                "image"
+              ]
+            },
+            "description": "multipart/form-data: pick a file for `image`, and optionally fill `caption`. The response, the `new_message` event and message history all carry `type: \"image\"` plus `imageUrl`, and the conversation's `lastMessage.type` becomes `image`. Deleting the message deletes the S3 object too.\n\n_Auth: bearer_",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick a file (JPEG/PNG/WebP, 5 MB each)"
+                },
+                {
+                  "key": "caption",
+                  "value": "Here it is",
+                  "type": "text"
+                }
+              ]
             }
           },
           "event": [

@@ -1,4 +1,10 @@
-import { ConversationModel, IConversation, IMessage, MessageModel } from "../models/chat.model";
+import {
+  ConversationModel,
+  IConversation,
+  IMessage,
+  MessageModel,
+  MessageType,
+} from "../models/chat.model";
 import { Types } from "mongoose";
 
 // Participants are populated with the fields a chat list needs, presence included.
@@ -118,11 +124,15 @@ export class ChatRepository {
     content: string;
     recipientIds: string[];
     deliveredAt?: Date;
+    type?: MessageType;
+    imageUrl?: string;
   }): Promise<IMessage> {
     const message = await MessageModel.create({
       conversation: data.conversationId,
       sender: data.senderId,
       content: data.content,
+      type: data.type ?? "text",
+      imageUrl: data.imageUrl,
       deliveredAt: data.deliveredAt,
     });
 
@@ -135,6 +145,7 @@ export class ChatRepository {
           content: data.content,
           sender: objectId(data.senderId),
           createdAt: message.createdAt,
+          type: data.type ?? "text",
         },
       },
       ...(Object.keys(increments).length ? { $inc: increments } : {}),
@@ -323,7 +334,7 @@ export class ChatRepository {
         deletedAt: { $exists: false },
       })
         .sort({ createdAt: -1 })
-        .select("content sender createdAt")
+        .select("content sender createdAt type")
         .lean();
 
       if (previous) {
@@ -331,6 +342,7 @@ export class ChatRepository {
           content: previous.content,
           sender: previous.sender,
           createdAt: previous.createdAt,
+          type: previous.type ?? "text",
         };
       } else {
         $unset.lastMessage = "";

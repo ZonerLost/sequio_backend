@@ -7,7 +7,8 @@ import { getId } from "../helpers/id.helper";
 import { isConnected, presenceOf } from "../helpers/presence.helper";
 import { emitNewMessage, emitToConversation, emitToUser, joinUserToConversation } from "../socket";
 import { notifyMessageReceived } from "../helpers/notification.triggers";
-import { IConversation, IMessage } from "../models/chat.model";
+import { IConversation, IMessage, MessageType } from "../models/chat.model";
+import { deleteFromS3, uploadToS3 } from "../helpers/s3.helper";
 
 const chatRepo = new ChatRepository();
 const userRepo = new UserRepository();
@@ -49,7 +50,7 @@ export class ChatService {
       conversationId,
       senderId,
       [data.participantId],
-      data.message
+      { content: data.message }
     );
 
     return { conversation, message };
@@ -71,6 +72,40 @@ export class ChatService {
   }
 
   async sendMessage(conversationId: string, senderId: string, content: string): Promise<IMessage> {
+    const recipientIds = await this.assertCanSend(conversationId, senderId);
+    return this.deliverMessage(conversationId, senderId, recipientIds, { content });
+  }
+
+  /**
+   * Sends an image as a message, with the caption (if any) in `content`.
+   *
+   * The upload happens before the message row exists, so a failed write would otherwise leave an
+   * orphaned S3 object — the object is removed on that path. Everything after the upload is the
+   * same code the text path uses, so receipts, socket events and notifications are identical.
+   */
+  async sendImageMessage(
+    conversationId: string,
+    senderId: string,
+    file: { buffer: Buffer; mimetype: string },
+    caption?: string
+  ): Promise<IMessage> {
+    const recipientIds = await this.assertCanSend(conversationId, senderId);
+
+    const imageUrl = await uploadToS3(file.buffer, file.mimetype, "chat-photos");
+    try {
+      return await this.deliverMessage(conversationId, senderId, recipientIds, {
+        content: caption ?? "",
+        type: "image",
+        imageUrl,
+      });
+    } catch (err) {
+      await deleteFromS3(imageUrl).catch(() => {});
+      throw err;
+    }
+  }
+
+  /** Membership and block checks shared by every way of sending; returns the other participants. */
+  private async assertCanSend(conversationId: string, senderId: string): Promise<string[]> {
     const conversation = await chatRepo.getConversationById(conversationId, senderId);
     if (!conversation) {
       throw new AppError("Conversation not found", HTTP_STATUS.NOT_FOUND);
@@ -87,7 +122,7 @@ export class ChatService {
       }
     }
 
-    return this.deliverMessage(conversationId, senderId, recipientIds, content);
+    return recipientIds;
   }
 
   /**
@@ -99,8 +134,9 @@ export class ChatService {
     conversationId: string,
     senderId: string,
     recipientIds: string[],
-    content: string
+    payload: { content: string; type?: MessageType; imageUrl?: string }
   ): Promise<IMessage> {
+    const { content, type, imageUrl } = payload;
     const connectedRecipients = recipientIds.filter((id) => isConnected(id));
     const deliveredAt =
       recipientIds.length > 0 && connectedRecipients.length === recipientIds.length
@@ -113,6 +149,8 @@ export class ChatService {
       content,
       recipientIds,
       deliveredAt,
+      type,
+      imageUrl,
     });
 
     emitNewMessage(conversationId, message);
@@ -193,6 +231,12 @@ export class ChatService {
     const message = await chatRepo.deleteMessage(messageId, userId);
     if (!message) {
       throw new AppError("Message not found or you are not the sender", HTTP_STATUS.NOT_FOUND);
+    }
+
+    // The row is only soft-deleted, but the image is gone from every view of the thread, so the
+    // object has no reader left. Best-effort, like every other S3 cleanup in this codebase.
+    if (message.type === "image" && message.imageUrl) {
+      await deleteFromS3(message.imageUrl).catch(() => {});
     }
 
     emitToConversation(conversationId, "message_deleted", {
