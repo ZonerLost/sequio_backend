@@ -291,5 +291,3 @@
  *       404:
  *         description: Address not found
  */
-
-export {};

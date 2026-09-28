@@ -25,6 +25,8 @@ export interface IPayment extends Document {
   booking: mongoose.Types.ObjectId;
   payer: mongoose.Types.ObjectId;
   payee: mongoose.Types.ObjectId;
+  /** The saved method this was paid with, when the client names one. */
+  paymentMethod?: mongoose.Types.ObjectId;
   amount: number;
   currency: string;
   method: PaymentMethod;
@@ -66,6 +68,7 @@ const PaymentSchema = new Schema<IPayment>(
     booking: { type: Schema.Types.ObjectId, ref: "Booking", required: true },
     payer: { type: Schema.Types.ObjectId, ref: "User", required: true },
     payee: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    paymentMethod: { type: Schema.Types.ObjectId, ref: "SavedPaymentMethod" },
     amount: { type: Number, required: true },
     currency: { type: String, default: "CAD" },
     method: {
@@ -87,7 +90,15 @@ const PaymentSchema = new Schema<IPayment>(
 );
 
 PaymentSchema.index({ payer: 1, createdAt: -1 });
+PaymentSchema.index({ payee: 1, createdAt: -1 });
 PaymentSchema.index({ booking: 1 });
+// A booking can carry at most ONE completed payment. The service also checks before inserting, but
+// two concurrent requests both pass that check — this is what actually prevents the double row.
+// Partial, so failed/refunded attempts on the same booking stay allowed.
+PaymentSchema.index(
+  { booking: 1 },
+  { unique: true, partialFilterExpression: { status: "completed" }, name: "one_completed_per_booking" }
+);
 SavedPaymentMethodSchema.index({ user: 1 });
 
 export const PaymentModel = mongoose.model<IPayment>("Payment", PaymentSchema);

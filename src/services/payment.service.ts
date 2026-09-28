@@ -21,7 +21,8 @@ export class PaymentService {
     payerId: string,
     data: {
       bookingId: string;
-      method: PaymentMethod;
+      method?: PaymentMethod;
+      paymentMethodId?: string;
       externalReference?: string;
     }
   ) {
@@ -33,27 +34,59 @@ export class PaymentService {
     }
 
     if (!["accepted", "active", "completed"].includes(booking.status)) {
+      // Naming the current status matters: a client that pays straight after creating a booking hits
+      // this every time, because a new booking is always "pending" until the owner accepts it.
       throw new AppError(
-        "Payment can only be recorded for accepted, active or completed bookings",
+        `Payment can only be recorded once the booking is accepted (this one is "${booking.status}")`,
         HTTP_STATUS.BAD_REQUEST
       );
     }
 
-    const existing = await paymentRepo.findByBooking(data.bookingId);
-    if (existing && existing.status === "completed") {
+    // A saved method pins down what was actually paid with; `method` alone only records a category.
+    let method = data.method;
+    let savedMethodId: mongoose.Types.ObjectId | undefined;
+    if (data.paymentMethodId) {
+      const saved = await paymentRepo.findMethodById(data.paymentMethodId, payerId);
+      if (!saved) throw new AppError("Payment method not found", HTTP_STATUS.NOT_FOUND);
+      if (method && method !== saved.type) {
+        throw new AppError(
+          `method "${method}" does not match that payment method (${saved.type})`,
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+      method = saved.type;
+      savedMethodId = saved._id;
+    }
+    if (!method) {
+      throw new AppError("Provide either method or paymentMethodId", HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const existing = await paymentRepo.findCompletedByBooking(data.bookingId);
+    if (existing) {
       throw new AppError("Payment already recorded for this booking", HTTP_STATUS.CONFLICT);
     }
 
-    const payment = await paymentRepo.create({
-      booking: new mongoose.Types.ObjectId(data.bookingId),
-      payer: new mongoose.Types.ObjectId(payerId),
-      payee: new mongoose.Types.ObjectId(getId(booking.owner)),
-      amount: booking.pricing.totalAmount,
-      currency: "CAD",
-      method: data.method,
-      status: "completed",
-      externalReference: data.externalReference,
-    });
+    let payment;
+    try {
+      payment = await paymentRepo.create({
+        booking: new mongoose.Types.ObjectId(data.bookingId),
+        payer: new mongoose.Types.ObjectId(payerId),
+        payee: new mongoose.Types.ObjectId(getId(booking.owner)),
+        paymentMethod: savedMethodId,
+        amount: booking.pricing.totalAmount,
+        currency: "CAD",
+        method,
+        status: "completed",
+        externalReference: data.externalReference,
+      });
+    } catch (err) {
+      // Two requests can pass the check above at the same time; the unique partial index on
+      // { booking, status: "completed" } is what actually stops the second row.
+      if ((err as { code?: number }).code === 11000) {
+        throw new AppError("Payment already recorded for this booking", HTTP_STATUS.CONFLICT);
+      }
+      throw err;
+    }
 
     notificationService.send({
       userId: getId(booking.owner),
@@ -63,11 +96,19 @@ export class PaymentService {
       data: { bookingId: data.bookingId, paymentId: payment._id.toString() },
     }).catch(() => {});
 
-    return payment;
+    // Return the same populated shape the GET endpoints return: one resource returning two different
+    // shapes is what forces a client to parse `payer` as "string or object" everywhere.
+    return (await paymentRepo.findById(payment._id.toString())) ?? payment;
   }
 
-  async getMyTransactions(userId: string, page = 1, limit = 10) {
-    const { payments, total } = await paymentRepo.findByPayer(userId, page, limit);
+  /** role: money out ("payer", the default), money in ("payee"), or both ("all"). */
+  async getMyTransactions(
+    userId: string,
+    page = 1,
+    limit = 10,
+    role: "payer" | "payee" | "all" = "payer"
+  ) {
+    const { payments, total } = await paymentRepo.findForUser(userId, role, page, limit);
     return { payments, pagination: buildPagination(total, page, limit) };
   }
 
@@ -107,11 +148,17 @@ export class PaymentService {
     return paymentRepo.getMethodsByUser(userId);
   }
 
+  /** Returns what is left, so a picker can refresh without a second request. */
   async deletePaymentMethod(methodId: string, userId: string) {
-    await paymentRepo.deleteMethod(methodId, userId);
+    const { deleted } = await paymentRepo.deleteMethod(methodId, userId);
+    // Without this, deleting someone else's id — or a typo — answered 200 having done nothing.
+    if (!deleted) throw new AppError("Payment method not found", HTTP_STATUS.NOT_FOUND);
+    return paymentRepo.getMethodsByUser(userId);
   }
 
   async setDefaultPaymentMethod(methodId: string, userId: string) {
-    await paymentRepo.setDefaultMethod(methodId, userId);
+    const updated = await paymentRepo.setDefaultMethod(methodId, userId);
+    if (!updated) throw new AppError("Payment method not found", HTTP_STATUS.NOT_FOUND);
+    return updated;
   }
 }

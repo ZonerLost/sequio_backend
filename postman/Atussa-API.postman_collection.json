@@ -3101,7 +3101,7 @@
                 "methods"
               ]
             },
-            "description": "Stores a wallet or card reference. Card details are not taken here.\n\n_Auth: bearer_",
+            "description": "Stores a wallet or card reference — no full card number or CVV. `card` is required for `credit_card`/`debit_card` and rejected for the wallet types. `brand` must be one of visa, mastercard, amex, discover, jcb, unionpay, diners, other (case-insensitive), and an expired card is refused. The first method saved becomes the default automatically.\n\n_Auth: bearer_",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"type\": \"credit_card\",\n  \"label\": \"Visa ending 4242\",\n  \"isDefault\": true,\n  \"card\": {\n    \"brand\": \"visa\",\n    \"last4\": \"4242\",\n    \"expiryMonth\": 12,\n    \"expiryYear\": 2030\n  }\n}",
@@ -3173,7 +3173,7 @@
                 "{{paymentMethodId}}"
               ]
             },
-            "description": "Removes a saved method.\n\n_Auth: bearer_"
+            "description": "404 when the id is not yours. Deleting the default promotes the next method, and `data` is the remaining list.\n\n_Auth: bearer_"
           },
           "event": [
             {
@@ -3204,7 +3204,7 @@
                 "default"
               ]
             },
-            "description": "Marks one as default.\n\n_Auth: bearer_"
+            "description": "404 when the id is not yours, leaving the current default untouched. `data` is the updated method.\n\n_Auth: bearer_"
           },
           "event": [
             {
@@ -3237,10 +3237,10 @@
                 "payments"
               ]
             },
-            "description": "Records a payment for a booking. It does **not** move money and is not verified with any gateway: the row is written as `completed`.\n\n_Auth: bearer_",
+            "description": "Records a payment for a booking. It does **not** move money and is not verified with any gateway: the row is written as `completed`. The booking must already be **accepted** (a new booking is `pending`, which answers 400). `amount` comes from the booking and cannot be set by the client. Pass `paymentMethodId` to link the transaction to a saved method — `method` is then derived from it. A second payment on the same booking answers 409.\n\n_Auth: bearer_",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"method\": \"credit_card\",\n  \"externalReference\": \"pi_3QExample1234\"\n}",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"paymentMethodId\": \"{{paymentMethodId}}\",\n  \"externalReference\": \"pi_3QExample1234\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3270,7 +3270,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/payments/my?page=1&limit=10",
+              "raw": "{{baseUrl}}/payments/my?page=1&limit=10&role=payer",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -3286,10 +3286,14 @@
                 {
                   "key": "limit",
                   "value": "10"
+                },
+                {
+                  "key": "role",
+                  "value": "payer"
                 }
               ]
             },
-            "description": "Only payments you made — money received does not appear here.\n\n_Auth: bearer_"
+            "description": "`role=payer` (default) is money out, `role=payee` is money received as an owner, `role=all` is both.\n\n_Auth: bearer_"
           },
           "event": [
             {
