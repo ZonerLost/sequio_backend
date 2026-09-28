@@ -178,6 +178,9 @@ The message gains two fields, on the REST response, the socket event and in hist
   uncaptioned image without fetching the message.
 - `DELETE /chats/{id}/messages/{msgId}` works unchanged and also deletes the S3 object, so treat the
   `imageUrl` of a deleted message as gone rather than cacheable.
+- **`imageUrl` is a plain public S3 URL** — fetch it directly, with no `Authorization` header, and it
+  stays valid until the message is deleted. Handle an image-load failure gracefully anyway: if these
+  ever move to expiring signed URLs, re-fetching the message is what will get you a fresh one.
 
 **Message paging:** page 1 is the **most recent** 30 messages, ordered oldest → newest inside the page; page 2 is the 30 before those. `pagination` sits at the top level of the response, next to `data`.
 
