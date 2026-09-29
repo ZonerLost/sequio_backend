@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { UserController } from "../controllers/user.controller";
+import { PayoutController } from "../controllers/payout.controller";
 import { AddressController } from "../controllers/address.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
@@ -10,6 +11,7 @@ import { saveFCMTokenHandler } from "./notification.routes";
 
 const router = Router();
 const ctrl = new UserController();
+const payoutCtrl = new PayoutController();
 const addressCtrl = new AddressController();
 
 router.use(authenticate);
@@ -19,6 +21,10 @@ router.put("/profile", validate(updateProfileSchema), ctrl.updateProfile.bind(ct
 router.put("/profile/photo", upload.single("photo"), ctrl.updateProfilePhoto.bind(ctrl));
 router.post("/identity-verify", upload.single("document"), ctrl.uploadIdentityDocument.bind(ctrl));
 router.post("/fcm-token", ...saveFCMTokenHandler);
+
+// Payouts (Stripe Connect). Static paths, declared above the /:userId routes on purpose.
+router.get("/payout-account", payoutCtrl.getStatus.bind(payoutCtrl));
+router.post("/payout-account/onboarding-link", payoutCtrl.createOnboardingLink.bind(payoutCtrl));
 
 // Presence (online / last seen)
 router.get("/:userId/presence", ctrl.getPresence.bind(ctrl));

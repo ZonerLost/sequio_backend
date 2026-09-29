@@ -40,6 +40,21 @@ const UserSchema = new Schema<IUser>(
     isBanned: { type: Boolean, default: false },
     lastLoginAt: { type: Date },
     fcmToken: { type: String },
+    // Stripe Connect. Status only: the account number and every KYC document live at Stripe, so a
+    // breach of this database exposes nothing that could move money. Never add raw bank fields here.
+    stripeAccount: {
+      id: { type: String },
+      chargesEnabled: { type: Boolean },
+      payoutsEnabled: { type: Boolean },
+      detailsSubmitted: { type: Boolean },
+      requirementsDue: [{ type: String }],
+      disabledReason: { type: String },
+      country: { type: String },
+      defaultCurrency: { type: String },
+      bankLast4: { type: String },
+      bankName: { type: String },
+      syncedAt: { type: Date },
+    },
     isOnline: { type: Boolean, default: false },
     lastSeenAt: { type: Date },
     boostCredits: { type: Number, default: 0 },

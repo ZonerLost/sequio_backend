@@ -149,6 +149,16 @@
       "key": "revenuecatWebhookSecret",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "stripeWebhookSecret",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "stripeAccountId",
+      "value": "acct_000000000000",
+      "type": "string"
     }
   ],
   "item": [
@@ -1025,6 +1035,65 @@
                 }
               }
             }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"no server error\", () => pm.expect(pm.response.code).to.be.below(500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payout account status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/payout-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "payout-account"
+              ]
+            },
+            "description": "Where this owner's rental income goes. Owners are paid through **Stripe Connect Express**, so no bank account number is ever stored here. Switch the UI on `state`: `not_connected`, `pending`, `restricted` (Stripe wants something — see `requirementsDue`) or `active`. Refreshed live from Stripe; if Stripe is unreachable the last known status is returned with 200.\n\n_Auth: bearer_"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"no server error\", () => pm.expect(pm.response.code).to.be.below(500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start payout onboarding",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/payout-account/onboarding-link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "payout-account",
+                "onboarding-link"
+              ]
+            },
+            "description": "Creates the connected account on first use and returns a **Stripe-hosted** URL to open in a browser or web view. Single-use and expires in minutes, so fetch a new one per tap rather than caching. Account creation is idempotency-keyed per user, so a double tap cannot create two accounts. 503 until `STRIPE_SECRET_KEY` and the return/refresh deep links are configured.\n\n_Auth: bearer_"
           },
           "event": [
             {
@@ -4677,6 +4746,70 @@
             }
           },
           "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"no server error\", () => pm.expect(pm.response.code).to.be.below(500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stripe webhook (account.updated)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/stripe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "stripe"
+              ]
+            },
+            "description": "Called by Stripe, not by clients. Verified with HMAC-SHA256 over the **raw** body, with a five-minute timestamp tolerance. Set `stripeWebhookSecret` and this request signs itself in a pre-request script; without it you will get 401, which is the point.\n\n_Auth: public_",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_test_1\",\n  \"type\": \"account.updated\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"{{stripeAccountId}}\",\n      \"charges_enabled\": true,\n      \"payouts_enabled\": true,\n      \"details_submitted\": true,\n      \"requirements\": {\n        \"currently_due\": [],\n        \"disabled_reason\": null\n      },\n      \"external_accounts\": {\n        \"data\": [\n          {\n            \"last4\": \"6789\",\n            \"bank_name\": \"Royal Bank of Canada\"\n          }\n        ]\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Stripe signs the exact bytes, so resolve variables before hashing.",
+                  "const secret = pm.collectionVariables.get(\"stripeWebhookSecret\");",
+                  "if (secret) {",
+                  "  const body = pm.variables.replaceIn(pm.request.body.raw);",
+                  "  const ts = Math.floor(Date.now() / 1000);",
+                  "  const sig = CryptoJS.HmacSHA256(ts + \".\" + body, secret).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.headers.upsert({ key: \"Stripe-Signature\", value: \"t=\" + ts + \",v1=\" + sig });",
+                  "} else {",
+                  "  console.log(\"set stripeWebhookSecret to sign this request; expect 401 without it\");",
+                  "}"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {

@@ -24,7 +24,18 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+    // Stripe signs the exact bytes it sent, so the parsed body cannot be used to verify a signature.
+    // Kept for webhook paths only, to avoid holding a second copy of every request body in memory.
+    verify: (req, _res, buf) => {
+      if (req.url?.includes("/webhooks/")) {
+        (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      }
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 app.use(
   morgan("combined", {

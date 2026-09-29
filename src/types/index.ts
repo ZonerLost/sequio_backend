@@ -37,6 +37,20 @@ export interface IUser extends Document {
   isBanned: boolean;
   lastLoginAt?: Date;
   fcmToken?: string;
+  /** Stripe Connect status. Holds no bank details — those stay with Stripe. */
+  stripeAccount?: {
+    id?: string;
+    chargesEnabled?: boolean;
+    payoutsEnabled?: boolean;
+    detailsSubmitted?: boolean;
+    requirementsDue?: string[];
+    disabledReason?: string;
+    country?: string;
+    defaultCurrency?: string;
+    bankLast4?: string;
+    bankName?: string;
+    syncedAt?: Date;
+  };
   isOnline: boolean;
   lastSeenAt?: Date;
   boostCredits: number;

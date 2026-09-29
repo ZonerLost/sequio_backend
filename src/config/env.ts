@@ -27,4 +27,11 @@ export const ENV = {
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX || "100", 10),
   REVENUECAT_API_KEY: process.env.REVENUECAT_API_KEY || "",
   REVENUECAT_WEBHOOK_SECRET: process.env.REVENUECAT_WEBHOOK_SECRET || "",
+  // Stripe Connect: owners onboard with Stripe, so no bank details ever reach this database.
+  // With no secret key the payout endpoints answer 503 rather than pretending to work.
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "",
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
+  // Where Stripe sends the owner back after hosted onboarding. Deep links in the mobile app.
+  STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || "",
+  STRIPE_CONNECT_REFRESH_URL: process.env.STRIPE_CONNECT_REFRESH_URL || "",
 };

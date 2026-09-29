@@ -23,4 +23,8 @@ export const HTTP_STATUS = {
   UNPROCESSABLE: 422,
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER: 500,
+  // Upstream failures: BAD_GATEWAY when a third party errors, SERVICE_UNAVAILABLE when a feature is
+  // not configured on this server (missing key) or the third party is unreachable.
+  BAD_GATEWAY: 502,
+  SERVICE_UNAVAILABLE: 503,
 };
