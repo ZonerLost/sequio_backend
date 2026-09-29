@@ -21,15 +21,45 @@ export interface IBooking extends Document {
   deliveryFee: number;
   pickupTimeFrom?: string;
   pickupTimeTo?: string;
+  /**
+   * Stored as calculated, never recomputed — see the schema note. Everything added on 2026-09-29 is
+   * optional because bookings created before then do not have it.
+   */
   pricing: {
+    currency?: string;
     dailyRate: number;
+    totalDays?: number;
     basePrice: number;
     discountPercent: number;
     discountAmount: number;
+    rentalAmount?: number;
+    deliveryFee?: number;
     subtotal: number;
     serviceFee: number;
     securityDeposit: number;
     totalAmount: number;
+    taxes?: Array<{
+      code: string;
+      label: string;
+      rate: number;
+      amount: number;
+      appliedTo: "atussa_fee" | "owner_commission";
+    }>;
+    taxTotal?: number;
+    renterFee?: {
+      percent: number;
+      minimum: number;
+      amount: number;
+      taxTotal: number;
+      minimumApplied: boolean;
+    };
+    ownerPayout?: {
+      commissionPercent: number;
+      commission: number;
+      commissionTaxTotal: number;
+      amount: number;
+    };
+    platform?: { revenue: number; taxCollected: number };
   };
   discountCode?: string;
   status: "pending" | "accepted" | "active" | "completed" | "declined" | "cancelled";
@@ -65,15 +95,52 @@ const BookingSchema = new Schema<IBooking>(
     deliveryFee: { type: Number, default: 0 },
     pickupTimeFrom: String,
     pickupTimeTo: String,
+    // The whole breakdown is stored, never recomputed: a rate change must not rewrite the price of a
+    // booking that was already agreed. Bookings created before 2026-09-29 have only the original
+    // fields (5% fee, $100 deposit, no owner split) and must be read as-is.
     pricing: {
+      currency: { type: String, default: "CAD" },
       dailyRate: { type: Number, required: true },
+      totalDays: { type: Number },
       basePrice: { type: Number, required: true },
       discountPercent: { type: Number, default: 0 },
       discountAmount: { type: Number, default: 0 },
+      /** The rental itself after discount — the base for commission and the renter fee. */
+      rentalAmount: { type: Number },
+      deliveryFee: { type: Number, default: 0 },
       subtotal: { type: Number, required: true },
+      /** The Atussa Fee. Kept under the original name so existing clients keep rendering it. */
       serviceFee: { type: Number, required: true },
       securityDeposit: { type: Number, required: true },
+      /** What the renter pays, taxes included. */
       totalAmount: { type: Number, required: true },
+      taxes: [
+        {
+          code: { type: String },
+          label: { type: String },
+          rate: { type: Number },
+          amount: { type: Number },
+          appliedTo: { type: String, enum: ["atussa_fee", "owner_commission"] },
+        },
+      ],
+      taxTotal: { type: Number },
+      renterFee: {
+        percent: { type: Number },
+        minimum: { type: Number },
+        amount: { type: Number },
+        taxTotal: { type: Number },
+        minimumApplied: { type: Boolean },
+      },
+      ownerPayout: {
+        commissionPercent: { type: Number },
+        commission: { type: Number },
+        commissionTaxTotal: { type: Number },
+        amount: { type: Number },
+      },
+      platform: {
+        revenue: { type: Number },
+        taxCollected: { type: Number },
+      },
     },
     discountCode: String,
     status: {

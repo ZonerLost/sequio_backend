@@ -10,6 +10,27 @@
  * /bookings/quote:
  *   post:
  *     summary: Calculate price quote before booking
+ *     description: |
+ *       Returns the full price breakdown, and the same numbers a booking will be created with.
+ *
+ *       **Atussa's pricing** (one source of truth: `src/helpers/pricing.helper.ts`)
+ *
+ *       - **Renter** pays the rental + delivery + an **Atussa Fee** of 3% of the rental amount with a
+ *         **$3.99 minimum**, plus TPS (5%) and TVQ (9.975%) on that fee.
+ *       - **Owner** is paid 85% of the rental amount, less TPS and TVQ on Atussa's 15% commission,
+ *         **plus the delivery fee in full** — delivery carries neither the commission nor the fee.
+ *       - **No security deposit.**
+ *
+ *       On a $100 rental with no delivery: the renter pays **$104.59**
+ *       (100 + 3.99 + 0.20 + 0.40) and the owner receives **$82.75** (100 − 15 − 0.75 − 1.50).
+ *       Atussa keeps $18.99 and remits $2.85 of tax.
+ *
+ *       `pricing.renterFee.minimumApplied` tells the UI whether the $3.99 floor was used instead of
+ *       3%. `atussaFeeExplainer` is the exact sentence to show behind the "?" next to Atussa Fee, so
+ *       the wording lives in one place.
+ *
+ *       Bookings created before 2026-09-29 carry the old shape (5% fee, $100 deposit, no owner split)
+ *       and are never recalculated — a stored price is the price that was agreed.
  *     tags: [Bookings]
  *     security: []
  *     requestBody:
@@ -28,6 +49,60 @@
  *     responses:
  *       200:
  *         description: Quote calculated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalDays: { type: integer }
+ *                     deliveryFee: { type: number }
+ *                     atussaFeeExplainer: { type: string }
+ *                     pricing:
+ *                       type: object
+ *                       properties:
+ *                         currency: { type: string, example: CAD }
+ *                         rentalAmount: { type: number, example: 100 }
+ *                         deliveryFee: { type: number, example: 0 }
+ *                         subtotal: { type: number, example: 100 }
+ *                         serviceFee: { type: number, example: 3.99, description: The Atussa Fee, under its original field name }
+ *                         securityDeposit: { type: number, example: 0 }
+ *                         totalAmount: { type: number, example: 104.59, description: What the renter pays, taxes included }
+ *                         taxTotal: { type: number, example: 2.85 }
+ *                         taxes:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               code: { type: string, example: TPS }
+ *                               label: { type: string, example: TPS (GST) }
+ *                               rate: { type: number, example: 0.05 }
+ *                               amount: { type: number, example: 0.2 }
+ *                               appliedTo: { type: string, enum: [atussa_fee, owner_commission] }
+ *                         renterFee:
+ *                           type: object
+ *                           properties:
+ *                             percent: { type: number, example: 3 }
+ *                             minimum: { type: number, example: 3.99 }
+ *                             amount: { type: number, example: 3.99 }
+ *                             taxTotal: { type: number, example: 0.6 }
+ *                             minimumApplied: { type: boolean, example: true }
+ *                         ownerPayout:
+ *                           type: object
+ *                           properties:
+ *                             commissionPercent: { type: number, example: 15 }
+ *                             commission: { type: number, example: 15 }
+ *                             commissionTaxTotal: { type: number, example: 2.25 }
+ *                             amount: { type: number, example: 82.75, description: What the owner receives }
+ *                         platform:
+ *                           type: object
+ *                           properties:
+ *                             revenue: { type: number, example: 18.99 }
+ *                             taxCollected: { type: number, example: 2.85 }
+ *       400:
+ *         description: Invalid body — endDate must be after startDate, dailyRate must be positive
  */
 
 /**

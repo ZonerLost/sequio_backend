@@ -1,5 +1,17 @@
 import Joi from "joi";
 
+// POST /bookings/quote had no validator, so a malformed body produced a 200 with null prices.
+// Deliberately permissive about what the client already sends; it only rejects nonsense.
+export const quoteSchema = Joi.object({
+  dailyRate: Joi.number().positive().max(100000).required(),
+  startDate: Joi.date().required(),
+  endDate: Joi.date().greater(Joi.ref("startDate")).required().messages({
+    "date.greater": "endDate must be after startDate",
+  }),
+  deliveryType: Joi.string().valid("pickup", "delivery").default("pickup"),
+  discountCode: Joi.string().max(50).allow("", null).optional(),
+});
+
 export const createBookingSchema = Joi.object({
   itemId: Joi.string().required(),
   startDate: Joi.date().min("now").required(),

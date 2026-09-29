@@ -8,12 +8,13 @@ import {
   declineBookingSchema,
   cancelBookingSchema,
   bookingQuerySchema,
+  quoteSchema,
 } from "../validators/booking.validator";
 
 const router = Router();
 const ctrl = new BookingController();
 
-router.post("/quote", ctrl.getQuote.bind(ctrl));
+router.post("/quote", validate(quoteSchema), ctrl.getQuote.bind(ctrl));
 router.use(authenticate);
 
 router.post("/", validate(createBookingSchema), ctrl.createBooking.bind(ctrl));

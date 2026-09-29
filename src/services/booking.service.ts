@@ -6,6 +6,7 @@ import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { IBooking } from "../models/booking.model";
 import { buildPagination } from "../helpers/pagination.helper";
+import { ATUSSA_FEE_EXPLAINER, calculatePriceBreakdown } from "../helpers/pricing.helper";
 import { EcoService } from "./eco.service";
 import {
   notifyBookingRequest,
@@ -19,8 +20,6 @@ const ecoService = new EcoService();
 const bookingRepo = new BookingRepository();
 const itemRepo = new ItemRepository();
 
-const SERVICE_FEE_PERCENT = 0.05;
-const SECURITY_DEPOSIT = 100;
 const DELIVERY_RATE_PER_KM = 5;
 const MIN_DELIVERY_FEE = 10;
 
@@ -36,21 +35,14 @@ function calculateDeliveryFee(distanceKm?: number): number {
   return Math.max(MIN_DELIVERY_FEE, Math.round(distanceKm * DELIVERY_RATE_PER_KM));
 }
 
+// Pricing lives in one place: src/helpers/pricing.helper.ts. Do not reintroduce a local copy.
 function calculatePricing(
   dailyRate: number,
   totalDays: number,
   deliveryFee: number,
   discountPercent = 0
 ) {
-  const basePrice = parseFloat((dailyRate * totalDays).toFixed(2));
-  const discountAmount = parseFloat((basePrice * (discountPercent / 100)).toFixed(2));
-  const subtotal = parseFloat((basePrice - discountAmount + deliveryFee).toFixed(2));
-  const serviceFee = parseFloat((subtotal * SERVICE_FEE_PERCENT).toFixed(2));
-  const totalAmount = parseFloat((subtotal + serviceFee + SECURITY_DEPOSIT).toFixed(2));
-  return {
-    dailyRate, basePrice, discountPercent, discountAmount,
-    subtotal, serviceFee, securityDeposit: SECURITY_DEPOSIT, totalAmount,
-  };
+  return calculatePriceBreakdown({ dailyRate, totalDays, deliveryFee, discountPercent });
 }
 
 function validateDiscountCode(code?: string): number {
@@ -280,6 +272,7 @@ export class BookingService {
     const deliveryFee = deliveryType === "delivery" ? calculateDeliveryFee() : 0;
     const pricing = calculatePricing(dailyRate, totalDays, deliveryFee, discountPercent);
 
-    return { totalDays, deliveryFee, pricing };
+    // The client renders this behind the "?" next to Atussa Fee; serving it keeps one wording.
+    return { totalDays, deliveryFee, pricing, atussaFeeExplainer: ATUSSA_FEE_EXPLAINER };
   }
 }
