@@ -5,8 +5,41 @@ import { ENV } from "./config/env";
 import { logger } from "./config/logger";
 import { initSocket, setIO } from "./socket";
 
+/**
+ * Payouts are configured through four env vars, and a *partial* configuration is the dangerous case:
+ * the status endpoint answers happily while onboarding returns 503, with nothing anywhere saying why.
+ * All four missing is simply "the feature is off" and stays quiet.
+ */
+const reportPayoutConfig = (): void => {
+  const missing = (
+    [
+      ["STRIPE_SECRET_KEY", ENV.STRIPE_SECRET_KEY],
+      ["STRIPE_WEBHOOK_SECRET", ENV.STRIPE_WEBHOOK_SECRET],
+      ["STRIPE_CONNECT_RETURN_URL", ENV.STRIPE_CONNECT_RETURN_URL],
+      ["STRIPE_CONNECT_REFRESH_URL", ENV.STRIPE_CONNECT_REFRESH_URL],
+    ] as const
+  )
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+
+  if (missing.length === 4) {
+    logger.info("💸 Payouts: not configured (Stripe Connect endpoints will answer 503)");
+    return;
+  }
+  if (missing.length > 0) {
+    logger.warn(
+      `💸 Payouts: PARTIALLY configured — missing ${missing.join(", ")}. ` +
+        "Onboarding will answer 503 until every one is set."
+    );
+    return;
+  }
+  const mode = ENV.STRIPE_SECRET_KEY.startsWith("sk_live_") ? "live" : "test";
+  logger.info(`💸 Payouts: Stripe Connect ready (${mode} mode)`);
+};
+
 const startServer = async () => {
   await connectDatabase();
+  reportPayoutConfig();
 
   const httpServer = http.createServer(app);
   const io = initSocket(httpServer);
