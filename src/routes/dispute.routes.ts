@@ -7,6 +7,7 @@ import {
   createDisputeSchema,
   resolveDisputeSchema,
   disputeQuerySchema,
+  updateDisputeStatusSchema,
 } from "../validators/dispute.validator";
 
 const router = Router();
@@ -25,6 +26,11 @@ router.put("/:id/cancel", ctrl.cancelDispute.bind(ctrl));
 router.get("/", authorize("admin"), validate(disputeQuerySchema, "query"), ctrl.getAllDisputes.bind(ctrl));
 router.get("/admin/:id", authorize("admin"), ctrl.getDisputeByIdAdmin.bind(ctrl));
 router.put("/admin/:id/resolve", authorize("admin"), validate(resolveDisputeSchema), ctrl.resolveDispute.bind(ctrl));
-router.put("/admin/:id/status", authorize("admin"), ctrl.updateDisputeStatus.bind(ctrl));
+router.put(
+  "/admin/:id/status",
+  authorize("admin"),
+  validate(updateDisputeStatusSchema),
+  ctrl.updateDisputeStatus.bind(ctrl)
+);
 
 export default router;

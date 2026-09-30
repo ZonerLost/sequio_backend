@@ -16,12 +16,15 @@ export class DisputeController {
 
   async getMyDisputes(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit } = req.query;
-      const result = await disputeService.getMyDisputes(
-        req.user!.userId,
-        Number(page) || 1,
-        Number(limit) || 10
-      );
+      // status was validated and then silently dropped here, so every filter tab showed the
+      // same unfiltered list.
+      const { status, role, page, limit } = req.query;
+      const result = await disputeService.getMyDisputes(req.user!.userId, {
+        status: status as string | undefined,
+        role: (role as "reporter" | "against" | "all") || "all",
+        page: Number(page) || 1,
+        limit: Number(limit) || 10,
+      });
       sendSuccess(res, "Disputes retrieved", result.disputes, 200, result.pagination);
     } catch (err) { next(err); }
   }

@@ -58,6 +58,8 @@ const DisputeSchema = new Schema<IDispute>(
 );
 
 DisputeSchema.index({ reportedBy: 1, status: 1 });
+// GET /disputes/my matches either side, so the second branch of that $or needs its own index.
+DisputeSchema.index({ reportedAgainst: 1, status: 1 });
 DisputeSchema.index({ booking: 1 });
 DisputeSchema.index({ status: 1, createdAt: -1 }); // for admin
 

@@ -3429,7 +3429,7 @@
                 "disputes"
               ]
             },
-            "description": "Raises a dispute on a booking.\n\n_Auth: bearer_",
+            "description": "Raises a dispute on a booking, by either party, once the booking is accepted/active/completed. `reason` is one of: item_damaged, item_not_returned, item_not_as_described, late_return, no_show, payment_issue, other. `description` needs 20-2000 characters. One dispute per booking per reporter (a second answers 409), but both parties may each file one.\n\n_Auth: bearer_",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"reason\": \"item_damaged\",\n  \"description\": \"The drill chuck was cracked when it came back.\"\n}",
@@ -3462,7 +3462,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/disputes/my?status=open&page=1&limit=10",
+              "raw": "{{baseUrl}}/disputes/my?status=open&role=all&page=1&limit=10",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -3476,6 +3476,10 @@
                   "value": "open"
                 },
                 {
+                  "key": "role",
+                  "value": "all"
+                },
+                {
                   "key": "page",
                   "value": "1"
                 },
@@ -3485,7 +3489,7 @@
                 }
               ]
             },
-            "description": "Disputes I am part of.\n\n_Auth: bearer_"
+            "description": "Every dispute where you are **either** the reporter or the person reported against — each row carries `myRole` (`reporter` or `reported_against`), and both parties are populated. `role=reporter|against|all` narrows it. `status` is honoured (it used to be accepted and ignored), and an unknown value answers 400. Evidence URLs come back signed for one hour, with `evidenceUrlsExpireAt`.\n\n_Auth: bearer_"
           },
           "event": [
             {
@@ -3544,7 +3548,7 @@
                 "evidence"
               ]
             },
-            "description": "multipart/form-data. Field `evidence`, up to 5 files.\n\n_Auth: bearer_",
+            "description": "multipart/form-data. Field `evidence`, up to 5 files, either party, while the dispute is `open` or `under_review`. Returns the dispute with **signed** evidence URLs (one hour): the `disputes/` S3 prefix is deliberately not public, so a raw URL 403s.\n\n_Auth: bearer_",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -3738,7 +3742,7 @@
                 "status"
               ]
             },
-            "description": "**No validation on this route** — any string is stored, and a typo hides the dispute from every admin filter. Use one of: open, under_review, resolved_for_renter, resolved_for_owner, resolved_mutually, closed.\n\n_Auth: bearer + admin role_",
+            "description": "Validated since 2026-09-30 — it previously stored any string, and a typo hid the dispute from every admin filter. One of: open, under_review, resolved_for_renter, resolved_for_owner, resolved_mutually, closed. Use the resolve route to close with an outcome and notify both parties.\n\n_Auth: bearer + admin role_",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"under_review\"\n}",

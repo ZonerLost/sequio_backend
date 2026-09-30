@@ -1,12 +1,16 @@
 import { DisputeRepository } from "../repository/dispute.repository";
 import { BookingRepository } from "../repository/booking.repository";
-import { uploadToS3 } from "../helpers/s3.helper";
+import { getPresignedUrl, uploadToS3 } from "../helpers/s3.helper";
+import { getId } from "../helpers/id.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { IDispute, DisputeReason, DisputeStatus } from "../models/dispute.model";
 import { buildPagination } from "../helpers/pagination.helper";
 import { notificationService } from "../services/notification.service";
 import mongoose from "mongoose";
+
+/** Long enough to browse a dispute, short enough that a leaked link stops working. */
+export const EVIDENCE_URL_TTL_SECONDS = 3600;
 
 const disputeRepo = new DisputeRepository();
 const bookingRepo = new BookingRepository();
@@ -73,9 +77,59 @@ export class DisputeService {
     return dispute;
   }
 
-  async getMyDisputes(userId: string, page = 1, limit = 10) {
-    const { disputes, total } = await disputeRepo.findByUser(userId, page, limit);
-    return { disputes, pagination: buildPagination(total, page, limit) };
+  /**
+   * Evidence photos are damage claims and quasi-legal material, so the `disputes/` prefix is **not**
+   * public — unlike item and profile photos. Raw URLs 403 for everyone, which is correct storage but
+   * useless to a client, so every read hands back a short-lived signed URL instead.
+   *
+   * A signing failure returns the raw URL rather than failing the whole read: a broken image beats a
+   * broken dispute screen.
+   */
+  private async withSignedEvidence(dispute: IDispute, viewerId?: string) {
+    const plain = (
+      typeof (dispute as unknown as { toObject?: () => Record<string, unknown> }).toObject ===
+      "function"
+        ? (dispute as unknown as { toObject: () => Record<string, unknown> }).toObject()
+        : { ...(dispute as unknown as Record<string, unknown>) }
+    ) as Record<string, unknown>;
+
+    const urls = (plain.evidence as string[] | undefined) ?? [];
+    if (urls.length) {
+      plain.evidence = await Promise.all(
+        urls.map(async (url) => {
+          try {
+            return await getPresignedUrl(url, EVIDENCE_URL_TTL_SECONDS);
+          } catch {
+            return url;
+          }
+        })
+      );
+      // So a client knows when to re-fetch rather than discovering expiry as a broken image.
+      plain.evidenceUrlsExpireAt = new Date(Date.now() + EVIDENCE_URL_TTL_SECONDS * 1000);
+    }
+
+    if (viewerId) {
+      const reporterId = getId((plain as { reportedBy?: unknown }).reportedBy);
+      plain.myRole = reporterId === viewerId ? "reporter" : "reported_against";
+    }
+    return plain;
+  }
+
+  async getMyDisputes(
+    userId: string,
+    opts: {
+      status?: string;
+      role?: "reporter" | "against" | "all";
+      page?: number;
+      limit?: number;
+    } = {}
+  ) {
+    const { page = 1, limit = 10 } = opts;
+    const { disputes, total } = await disputeRepo.findByUser(userId, opts);
+    return {
+      disputes: await Promise.all(disputes.map((d) => this.withSignedEvidence(d, userId))),
+      pagination: buildPagination(total, page, limit),
+    };
   }
 
   async getDisputeById(disputeId: string, userId: string) {
@@ -87,7 +141,7 @@ export class DisputeService {
       dispute.reportedAgainst._id.toString() === userId;
     if (!isParty) throw new AppError("Access denied", HTTP_STATUS.FORBIDDEN);
 
-    return dispute;
+    return this.withSignedEvidence(dispute, userId);
   }
 
   async uploadEvidence(
@@ -116,7 +170,8 @@ export class DisputeService {
       )
     );
 
-    return disputeRepo.addEvidence(disputeId, urls);
+    const updated = await disputeRepo.addEvidence(disputeId, urls);
+    return updated ? this.withSignedEvidence(updated, userId) : updated;
   }
 
   async cancelDispute(disputeId: string, userId: string) {
@@ -135,13 +190,16 @@ export class DisputeService {
 
   async getAllDisputes(status?: string, page = 1, limit = 10) {
     const { disputes, total } = await disputeRepo.findAll(status, page, limit);
-    return { disputes, pagination: buildPagination(total, page, limit) };
+    return {
+      disputes: await Promise.all(disputes.map((d) => this.withSignedEvidence(d))),
+      pagination: buildPagination(total, page, limit),
+    };
   }
 
   async getDisputeByIdAdmin(disputeId: string) {
     const dispute = await disputeRepo.findById(disputeId);
     if (!dispute) throw new AppError("Dispute not found", HTTP_STATUS.NOT_FOUND);
-    return dispute;
+    return this.withSignedEvidence(dispute);
   }
 
   async resolveDispute(

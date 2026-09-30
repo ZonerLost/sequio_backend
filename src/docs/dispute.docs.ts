@@ -37,6 +37,10 @@
  *
  *   get:
  *     summary: Get all disputes (admin only)
+ *     description: |
+ *       **Evidence URLs are signed and expire after one hour.** The `disputes/` prefix is not
+ *       public — evidence is damage claims, not catalogue photos — so each read returns freshly signed
+ *       links plus `evidenceUrlsExpireAt`. Re-fetch the dispute for new links rather than caching them.
  *     tags: [Disputes]
  *     security:
  *       - BearerAuth: []
@@ -61,11 +65,34 @@
  * @swagger
  * /disputes/my:
  *   get:
- *     summary: Get my submitted disputes
+ *     summary: Disputes I am part of (either side)
+ *     description: |
+ *       Every dispute where the caller is **either** the reporter or the person reported against.
+ *       Before 2026-09-30 it returned only disputes the caller had filed, so nobody could see a
+ *       dispute raised against them even though they are allowed to read it and add evidence.
+ *
+ *       Each row carries **`myRole`**: `reporter` or `reported_against`. Both parties are populated,
+ *       so a list can name who filed it. Narrow to one side with `role`.
+ *
+ *       `status` is honoured (it was accepted and then silently ignored, so every filter tab showed
+ *       the same list). An unrecognised value answers 400 rather than returning everything.
+ *
+ *       **Evidence URLs are signed and expire after one hour.** The `disputes/` prefix is not
+ *       public — evidence is damage claims, not catalogue photos — so each read returns freshly signed
+ *       links plus `evidenceUrlsExpireAt`. Re-fetch the dispute for new links rather than caching them.
  *     tags: [Disputes]
  *     security:
  *       - BearerAuth: []
  *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [open, under_review, resolved_for_renter, resolved_for_owner, resolved_mutually, closed]
+ *       - in: query
+ *         name: role
+ *         description: Which side to list. Defaults to both.
+ *         schema: { type: string, enum: [reporter, against, all], default: all }
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
@@ -75,6 +102,8 @@
  *     responses:
  *       200:
  *         description: My disputes retrieved
+ *       400:
+ *         description: Unknown status or role
  */
 
 /**
@@ -82,6 +111,13 @@
  * /disputes/{id}:
  *   get:
  *     summary: Get dispute details
+ *     description: |
+ *       Readable by either party. The response carries `myRole` (`reporter` or
+ *       `reported_against`).
+ *
+ *       **Evidence URLs are signed and expire after one hour.** The `disputes/` prefix is not
+ *       public — evidence is damage claims, not catalogue photos — so each read returns freshly signed
+ *       links plus `evidenceUrlsExpireAt`. Re-fetch the dispute for new links rather than caching them.
  *     tags: [Disputes]
  *     security:
  *       - BearerAuth: []
@@ -102,6 +138,12 @@
  * /disputes/{id}/evidence:
  *   post:
  *     summary: Upload evidence photos for a dispute
+ *     description: |
+ *       Either party, while the dispute is `open` or `under_review`. Up to 5 images per request,
+ *       JPEG/PNG/WebP, 5MB each; a wrong field name, an oversized file or a non-image answers 400.
+ *
+ *       The response is the updated dispute, with **signed** evidence URLs valid for one hour — the
+ *       raw S3 URL is stored but is not publicly readable.
  *     tags: [Disputes]
  *     security:
  *       - BearerAuth: []
@@ -147,6 +189,10 @@
  * /disputes/admin/{id}:
  *   get:
  *     summary: Get any dispute by ID (admin only)
+ *     description: |
+ *       **Evidence URLs are signed and expire after one hour.** The `disputes/` prefix is not
+ *       public — evidence is damage claims, not catalogue photos — so each read returns freshly signed
+ *       links plus `evidenceUrlsExpireAt`. Re-fetch the dispute for new links rather than caching them.
  *     tags: [Disputes]
  *     security:
  *       - BearerAuth: []
@@ -195,6 +241,13 @@
  * /disputes/admin/{id}/status:
  *   put:
  *     summary: Update dispute status (admin only)
+ *     description: |
+ *       Validated against the status list since 2026-09-30. It previously had **no validator at all**,
+ *       so any string was written straight onto the document and a single typo hid the dispute from
+ *       every admin status filter with no error anywhere.
+ *
+ *       Use `PUT /disputes/admin/{id}/resolve` to close a dispute with an outcome and notify both
+ *       parties; this route is for moving it to `under_review` and similar.
  *     tags: [Disputes]
  *     security:
  *       - BearerAuth: []
