@@ -166,3 +166,80 @@ export interface StripeConnectAccount {
   external_accounts?: { data?: Array<{ last4?: string; bank_name?: string }> };
   metadata?: Record<string, string>;
 }
+
+export interface StripePaymentIntent {
+  id: string;
+  object: "payment_intent";
+  amount: number;
+  currency: string;
+  status: string;
+  client_secret: string;
+  latest_charge?: string;
+  transfer_data?: { destination?: string };
+  application_fee_amount?: number;
+  metadata?: Record<string, string>;
+}
+
+export interface StripeRefund {
+  id: string;
+  object: "refund";
+  amount: number;
+  currency: string;
+  status: string;
+  payment_intent?: string;
+  charge?: string;
+}
+
+export const createPaymentIntent = async (params: {
+  amount: number;
+  currency: string;
+  destinationAccountId?: string;
+  applicationFeeAmount?: number;
+  metadata?: Record<string, string>;
+  idempotencyKey?: string;
+}): Promise<StripePaymentIntent> => {
+  const payload: Record<string, unknown> = {
+    amount: params.amount,
+    currency: params.currency.toLowerCase(),
+    payment_method_types: ["card"],
+  };
+
+  if (params.destinationAccountId) {
+    payload.transfer_data = { destination: params.destinationAccountId };
+    if (params.applicationFeeAmount !== undefined && params.applicationFeeAmount > 0) {
+      payload.application_fee_amount = params.applicationFeeAmount;
+    }
+  }
+
+  if (params.metadata) {
+    payload.metadata = params.metadata;
+  }
+
+  return stripeRequest<StripePaymentIntent>("POST", "/payment_intents", payload, params.idempotencyKey);
+};
+
+export const getPaymentIntent = async (
+  paymentIntentId: string
+): Promise<StripePaymentIntent> => {
+  return stripeRequest<StripePaymentIntent>("GET", `/payment_intents/${paymentIntentId}`);
+};
+
+export const createRefund = async (params: {
+  paymentIntentId: string;
+  amount?: number;
+  reverseTransfer?: boolean;
+  refundApplicationFee?: boolean;
+  reason?: string;
+  idempotencyKey?: string;
+}): Promise<StripeRefund> => {
+  const payload: Record<string, unknown> = {
+    payment_intent: params.paymentIntentId,
+  };
+
+  if (params.amount) payload.amount = params.amount;
+  if (params.reverseTransfer !== undefined) payload.reverse_transfer = params.reverseTransfer;
+  if (params.refundApplicationFee !== undefined) payload.refund_application_fee = params.refundApplicationFee;
+  if (params.reason) payload.reason = params.reason;
+
+  return stripeRequest<StripeRefund>("POST", "/refunds", payload, params.idempotencyKey);
+};

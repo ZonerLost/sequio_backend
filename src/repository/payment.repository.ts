@@ -29,6 +29,14 @@ export class PaymentRepository {
     return PaymentModel.findOne({ booking: bookingId, status: "completed" });
   }
 
+  async findPendingByBooking(bookingId: string): Promise<IPayment | null> {
+    return PaymentModel.findOne({ booking: bookingId, status: "pending" });
+  }
+
+  async findByPaymentIntentId(paymentIntentId: string): Promise<IPayment | null> {
+    return PaymentModel.findOne({ stripePaymentIntentId: paymentIntentId });
+  }
+
   async findForUser(
     userId: string,
     role: "payer" | "payee" | "all",

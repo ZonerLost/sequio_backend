@@ -36,9 +36,10 @@ export interface IPayment extends Document {
   receiptUrl?: string;
   refundedAt?: Date;
   refundReason?: string;
-  // TODO: Stripe/payment gateway integration pending
-  // stripePaymentIntentId?: string;
-  // stripeChargeId?: string;
+  stripePaymentIntentId?: string;
+  stripeClientSecret?: string;
+  stripeTransferId?: string;
+  stripeRefundId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +86,10 @@ const PaymentSchema = new Schema<IPayment>(
     receiptUrl: { type: String },
     refundedAt: { type: Date },
     refundReason: { type: String },
+    stripePaymentIntentId: { type: String, sparse: true, index: true },
+    stripeClientSecret: { type: String },
+    stripeTransferId: { type: String },
+    stripeRefundId: { type: String },
   },
   { timestamps: true }
 );

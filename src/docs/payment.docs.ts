@@ -7,6 +7,46 @@
 
 /**
  * @swagger
+ * /payments/create-intent:
+ *   post:
+ *     summary: Create a Stripe PaymentIntent for an accepted booking
+ *     description: |
+ *       Initializes a real Stripe PaymentIntent with destination charge routing to the owner's
+ *       connected Stripe Express account, taking the platform commission and taxes as `application_fee_amount`.
+ *
+ *       - The booking must be in `accepted` status.
+ *       - Only the renter may create the payment intent.
+ *       - The owner must have completed Stripe Connect onboarding.
+ *       - Returns `clientSecret` and `paymentIntentId` for Stripe Elements / Mobile SDK.
+ *     tags: [Payments]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [bookingId]
+ *             properties:
+ *               bookingId: { type: string }
+ *     responses:
+ *       201:
+ *         description: PaymentIntent created successfully
+ *       400:
+ *         description: Booking is not accepted, or owner has not onboarded Stripe
+ *       403:
+ *         description: Only the renter can pay
+ *       404:
+ *         description: Booking not found
+ *       409:
+ *         description: Payment already completed for this booking
+ *       503:
+ *         description: Stripe is not configured on this server
+ */
+
+/**
+ * @swagger
  * /payments:
  *   post:
  *     summary: Record a payment against a booking

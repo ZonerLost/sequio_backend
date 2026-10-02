@@ -5,6 +5,16 @@ import { sendSuccess, sendCreated } from "../helpers/response.helper";
 const paymentService = new PaymentService();
 
 export class PaymentController {
+  async createPaymentIntent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await paymentService.createPaymentIntent(
+        req.user!.userId,
+        req.body.bookingId
+      );
+      sendCreated(res, "Payment intent created successfully", result);
+    } catch (err) { next(err); }
+  }
+
   async recordPayment(req: Request, res: Response, next: NextFunction) {
     try {
       const payment = await paymentService.recordPayment(req.user!.userId, req.body);

@@ -3,6 +3,7 @@ import { PaymentController } from "../controllers/payment.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import {
+  createPaymentIntentSchema,
   recordPaymentSchema,
   savePaymentMethodSchema,
   paymentQuerySchema,
@@ -20,6 +21,7 @@ router.delete("/methods/:id", ctrl.deletePaymentMethod.bind(ctrl));
 router.put("/methods/:id/default", ctrl.setDefaultPaymentMethod.bind(ctrl));
 
 // Transactions
+router.post("/create-intent", validate(createPaymentIntentSchema), ctrl.createPaymentIntent.bind(ctrl));
 router.post("/", validate(recordPaymentSchema), ctrl.recordPayment.bind(ctrl));
 router.get("/my", validate(paymentQuerySchema, "query"), ctrl.getMyTransactions.bind(ctrl));
 router.get("/:id", ctrl.getPaymentById.bind(ctrl));

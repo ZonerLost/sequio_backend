@@ -8,6 +8,7 @@ import { ReviewModel } from "../models/review.model";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { buildPagination } from "../helpers/pagination.helper";
+import { createRefund, stripeConfigured } from "../helpers/stripe.helper";
 import mongoose from "mongoose";
 
 export class AdminService {
@@ -210,24 +211,39 @@ export class AdminService {
     return { payments, pagination: buildPagination(total, page, limit) };
   }
 
-  async refundPayment(paymentId: string, reason: string) {
-    const payment = await PaymentModel.findById(paymentId);
+  async refundPayment(identifier: string, reason: string) {
+    let payment = await PaymentModel.findById(identifier);
+    if (!payment && mongoose.isValidObjectId(identifier)) {
+      payment = await PaymentModel.findOne({ booking: identifier, status: "completed" });
+    }
     if (!payment) throw new AppError("Payment not found", HTTP_STATUS.NOT_FOUND);
     if (payment.status !== "completed") {
       throw new AppError("Only completed payments can be refunded", HTTP_STATUS.BAD_REQUEST);
     }
 
+    let stripeRefundId: string | undefined;
+    if (payment.stripePaymentIntentId && stripeConfigured()) {
+      const refund = await createRefund({
+        paymentIntentId: payment.stripePaymentIntentId,
+        reverseTransfer: true,
+        refundApplicationFee: true,
+        reason,
+        idempotencyKey: `refund-${payment._id.toString()}`,
+      });
+      stripeRefundId = refund.id;
+    }
+
     const updated = await PaymentModel.findByIdAndUpdate(
-      paymentId,
+      payment._id,
       {
         status: "refunded",
         refundedAt: new Date(),
         refundReason: reason,
+        ...(stripeRefundId ? { stripeRefundId } : {}),
       },
       { new: true }
     );
 
-    // TODO: Process actual refund via Stripe when integrated
     return updated;
   }
 

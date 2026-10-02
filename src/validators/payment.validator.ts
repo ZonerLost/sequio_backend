@@ -42,17 +42,29 @@ const cardSchema = Joi.object({
   .custom(notExpired)
   .messages({ "card.expired": "This card has already expired" });
 
+export const createPaymentIntentSchema = Joi.object({
+  bookingId: Joi.string().required(),
+});
+
 export const recordPaymentSchema = Joi.object({
   bookingId: Joi.string().required(),
+  paymentIntentId: Joi.string().optional(),
   // Naming a saved method is the precise way to record what was paid with; `method` is then derived
   // from it. Supplying both is fine as long as they agree (the service checks).
   paymentMethodId: Joi.string().optional(),
   method: Joi.string()
     .valid(...PAYMENT_METHOD_TYPES)
-    .when("paymentMethodId", { is: Joi.exist(), then: Joi.optional(), otherwise: Joi.required() })
-    .messages({ "any.required": "Provide either method or paymentMethodId" }),
-  // A gateway reference when one exists. Not verified against anything — see the payments note in
-  // CLAUDE.md: no money moves through this endpoint yet.
+    .when("paymentMethodId", {
+      is: Joi.exist(),
+      then: Joi.optional(),
+      otherwise: Joi.when("paymentIntentId", {
+        is: Joi.exist(),
+        then: Joi.optional(),
+        otherwise: Joi.required(),
+      }),
+    })
+    .messages({ "any.required": "Provide either method, paymentMethodId or paymentIntentId" }),
+  // A gateway reference when one exists.
   externalReference: Joi.string().max(255).optional(),
 });
 

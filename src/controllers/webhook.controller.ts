@@ -1,8 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { WebhookService } from "../services/webhook.service";
 import { sendSuccess } from "../helpers/response.helper";
-import { verifyStripeWebhook, StripeConnectAccount } from "../helpers/stripe.helper";
+import {
+  verifyStripeWebhook,
+  StripeConnectAccount,
+  StripePaymentIntent,
+} from "../helpers/stripe.helper";
 import { payoutService } from "../services/payout.service";
+import { paymentService } from "../services/payment.service";
 import { logger } from "../config/logger";
 
 const webhookService = new WebhookService();
@@ -18,14 +23,18 @@ export class WebhookController {
   async stripe(req: Request, res: Response, next: NextFunction) {
     try {
       const raw = (req as Request & { rawBody?: Buffer }).rawBody;
-      const event = verifyStripeWebhook<{ type: string; data: { object: StripeConnectAccount } }>(
+      const event = verifyStripeWebhook<{ type: string; data: { object: any } }>(
         raw ?? JSON.stringify(req.body),
         req.headers["stripe-signature"] as string | undefined
       );
 
       if (event.type === "account.updated") {
-        const applied = await payoutService.applyAccountUpdate(event.data.object);
-        logger.info("Stripe account.updated processed", { accountId: event.data.object.id, applied });
+        const applied = await payoutService.applyAccountUpdate(event.data.object as StripeConnectAccount);
+        logger.info("Stripe account.updated processed", { accountId: (event.data.object as StripeConnectAccount).id, applied });
+      } else if (event.type === "payment_intent.succeeded") {
+        await paymentService.handlePaymentIntentSucceeded(event.data.object as StripePaymentIntent);
+      } else if (event.type === "payment_intent.payment_failed") {
+        await paymentService.handlePaymentIntentFailed(event.data.object as StripePaymentIntent);
       }
 
       sendSuccess(res, "Webhook received");
