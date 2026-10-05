@@ -47,6 +47,42 @@
 
 /**
  * @swagger
+ * /payments/config:
+ *   get:
+ *     summary: Stripe settings a client needs to initialise checkout
+ *     description: |
+ *       **Public — no token required.** A Stripe *publishable* key is designed to ship inside client
+ *       apps, so serving it keeps one source of truth: switching test to live, or rotating the key,
+ *       needs no app release and no rebuild.
+ *
+ *       Initialise the Stripe SDK with `publishableKey` at launch. When `paymentsEnabled` is false
+ *       the server has no usable Stripe configuration — show checkout as unavailable rather than
+ *       handing the SDK an empty key.
+ *
+ *       `mode` reports `test` or `live`, which is worth surfacing in a debug screen so nobody spends
+ *       an afternoon wondering why a real card was declined against test keys.
+ *     tags: [Payments]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Payment configuration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     publishableKey: { type: string, nullable: true, example: pk_test_51... }
+ *                     paymentsEnabled: { type: boolean }
+ *                     currency: { type: string, example: CAD }
+ *                     merchantCountryCode: { type: string, example: CA }
+ *                     mode: { type: string, enum: [test, live] }
+ */
+
+/**
+ * @swagger
  * /payments:
  *   post:
  *     summary: Record a payment against a booking

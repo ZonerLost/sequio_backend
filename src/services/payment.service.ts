@@ -3,6 +3,7 @@ import { BookingRepository } from "../repository/booking.repository";
 import { UserRepository } from "../repository/user.repository";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
+import { ENV } from "../config/env";
 import { PaymentMethod } from "../models/payment.model";
 import { buildPagination } from "../helpers/pagination.helper";
 import { notificationService } from "../services/notification.service";
@@ -29,6 +30,21 @@ export class PaymentService {
   /**
    * Generates a Stripe PaymentIntent for an accepted booking with destination charge and application fee.
    */
+  /**
+   * What a client needs to initialise Stripe. The publishable key is not a secret — it is meant to
+   * live in client code — so serving it keeps one source of truth and lets a test-to-live switch or
+   * a key rotation happen without an app release.
+   */
+  getClientConfig() {
+    return {
+      publishableKey: ENV.STRIPE_PUBLISHABLE_KEY || null,
+      paymentsEnabled: stripeConfigured() && Boolean(ENV.STRIPE_PUBLISHABLE_KEY),
+      currency: "CAD",
+      merchantCountryCode: "CA",
+      mode: ENV.STRIPE_SECRET_KEY.startsWith("sk_live_") ? "live" : "test",
+    };
+  }
+
   async createPaymentIntent(payerId: string, bookingId: string) {
     if (!stripeConfigured()) {
       throw new AppError(
@@ -67,17 +83,44 @@ export class PaymentService {
       );
     }
 
+    // Bookings priced before 2026-09-29 have no ownerPayout, and their total included a $100
+    // security deposit — taking 85% of that would transfer the renter's deposit to the owner. Refuse
+    // rather than move the wrong amount; the booking can be re-created at current pricing.
+    if (booking.pricing.ownerPayout?.amount === undefined) {
+      throw new AppError(
+        "This booking was priced before the current commission model and cannot be charged. " +
+          "Please cancel it and create a new booking.",
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
     const totalAmountCents = Math.round(booking.pricing.totalAmount * 100);
-    const ownerPayoutCents = Math.round(
-      (booking.pricing.ownerPayout?.amount ?? booking.pricing.totalAmount * 0.85) * 100
-    );
+    const ownerPayoutCents = Math.round(booking.pricing.ownerPayout.amount * 100);
+    // Everything the renter pays that is not the owner's payout: commission, the Atussa Fee, and the
+    // taxes Atussa remits. Matches the invariant asserted in pricing.helper.ts.
     const applicationFeeCents = Math.max(0, totalAmountCents - ownerPayoutCents);
 
     // If an existing pending payment has a client_secret, check if it's still usable
     let pending = await paymentRepo.findPendingByBooking(bookingId);
+    let replacing: string | undefined;
     if (pending?.stripePaymentIntentId) {
       try {
         const existingIntent = await getPaymentIntent(pending.stripePaymentIntentId);
+
+        // Already paid, or being paid: the row is only still "pending" because the webhook has not
+        // landed yet. Creating another intent here is how a renter gets charged twice.
+        if (existingIntent.status === "succeeded") {
+          await this.handlePaymentIntentSucceeded(existingIntent);
+          throw new AppError("Payment already recorded for this booking", HTTP_STATUS.CONFLICT);
+        }
+        if (existingIntent.status === "processing") {
+          throw new AppError(
+            "This payment is still being processed by Stripe. Please wait a moment and refresh.",
+            HTTP_STATUS.CONFLICT
+          );
+        }
+
+        // Still payable: hand back the same client secret rather than a second intent.
         if (
           ["requires_payment_method", "requires_confirmation", "requires_action"].includes(
             existingIntent.status
@@ -91,8 +134,14 @@ export class PaymentService {
             bookingId,
           };
         }
-      } catch {
-        // Create fresh intent below
+
+        // Dead (canceled, or requires_capture we do not use): replace it, and remember which one, so
+        // the idempotency key below differs from the attempt that produced it.
+        replacing = existingIntent.id;
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+        // Stripe could not tell us about it (deleted test data, transient error): start fresh.
+        replacing = pending.stripePaymentIntentId;
       }
     }
 
@@ -106,7 +155,9 @@ export class PaymentService {
         payerId,
         ownerId: getId(booking.owner),
       },
-      idempotencyKey: `pi-${bookingId}-${totalAmountCents}`,
+      // Keyed per attempt: a plain booking+amount key would, after an intent was canceled, replay
+      // Stripe's original response for 24h and hand the renter back the dead intent forever.
+      idempotencyKey: `pi-${bookingId}-${totalAmountCents}-${replacing ?? "first"}`,
     });
 
     if (pending) {
@@ -176,7 +227,15 @@ export class PaymentService {
     let stripePaymentIntentId = data.paymentIntentId;
 
     if (data.paymentIntentId) {
-      if (stripeConfigured()) {
+      // Fail closed. Without a key this used to skip verification and write the payment as
+      // completed on the client's word, which is exactly what naming an intent is supposed to prove.
+      if (!stripeConfigured()) {
+        throw new AppError(
+          "Payment processing is not configured on this server yet",
+          HTTP_STATUS.SERVICE_UNAVAILABLE
+        );
+      }
+      {
         const intent = await getPaymentIntent(data.paymentIntentId);
         if (intent.status !== "succeeded") {
           throw new AppError(

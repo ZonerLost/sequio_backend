@@ -30,6 +30,9 @@ export const ENV = {
   // Stripe Connect: owners onboard with Stripe, so no bank details ever reach this database.
   // With no secret key the payout endpoints answer 503 rather than pretending to work.
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "",
+  // Not a secret — it is designed to ship inside client apps. Served by GET /payments/config so a
+  // test-to-live switch, or a key rotation, needs no app release.
+  STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY || "",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
   // Where Stripe sends the owner back after hosted onboarding. Deep links in the mobile app.
   STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || "",

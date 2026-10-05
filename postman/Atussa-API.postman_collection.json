@@ -121,6 +121,16 @@
       "type": "string"
     },
     {
+      "key": "paymentIntentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientSecret",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "notificationId",
       "value": "",
       "type": "string"
@@ -3151,6 +3161,35 @@
       "name": "07 · Payments",
       "item": [
         {
+          "name": "Stripe client config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "config"
+              ]
+            },
+            "description": "**Public, no token.** The publishable key a client needs to initialise Stripe, plus `paymentsEnabled`, `currency`, `merchantCountryCode` and `mode` (test|live). Serving it means switching test to live, or rotating the key, needs no app release.\n\n_Auth: bearer_"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"no server error\", () => pm.expect(pm.response.code).to.be.below(500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Save payment method",
           "request": {
             "method": "POST",
@@ -3282,6 +3321,53 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"no server error\", () => pm.expect(pm.response.code).to.be.below(500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create payment intent (Pay Now)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/create-intent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "create-intent"
+              ]
+            },
+            "description": "Starts a real Stripe charge: a destination charge on the owner's connected account, with Atussa's share as the application fee (renter total minus owner payout). Returns `clientSecret` for the native PaymentSheet. Answers **201**. The booking must be **accepted**, the caller must be the renter, and the owner must have finished Stripe payout onboarding. Re-requesting while an intent is still payable returns the same one; a succeeded or processing intent answers 409 rather than creating a second charge.\n\n_Auth: bearer_",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ok = pm.response.code < 300;",
+                  "pm.test(\"2xx\", () => pm.expect(pm.response.code).to.be.below(300));",
+                  "const body = pm.response.json();",
+                  "const d = body && body.data;",
+                  "if (ok && d) { pm.collectionVariables.set(\"paymentIntentId\", d.paymentIntentId); pm.collectionVariables.set(\"clientSecret\", d.clientSecret); }"
                 ]
               }
             }

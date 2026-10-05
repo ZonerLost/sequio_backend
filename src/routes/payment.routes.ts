@@ -12,6 +12,10 @@ import {
 const router = Router();
 const ctrl = new PaymentController();
 
+// Declared ABOVE the authenticate line on purpose: a publishable key is designed to be public, and
+// the app needs it to initialise Stripe before anyone has signed in.
+router.get("/config", ctrl.getConfig.bind(ctrl));
+
 router.use(authenticate);
 
 // Payment methods — MUST be before /:id to avoid conflict

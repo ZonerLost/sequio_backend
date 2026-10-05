@@ -15,6 +15,12 @@ export class PaymentController {
     } catch (err) { next(err); }
   }
 
+  async getConfig(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, "Payment configuration retrieved", paymentService.getClientConfig());
+    } catch (err) { next(err); }
+  }
+
   async recordPayment(req: Request, res: Response, next: NextFunction) {
     try {
       const payment = await paymentService.recordPayment(req.user!.userId, req.body);
