@@ -12,7 +12,9 @@ export class PayoutController {
 
   async createOnboardingLink(req: Request, res: Response, next: NextFunction) {
     try {
-      const link = await payoutService.createOnboardingLink(req.user!.userId);
+      // trust proxy is on, so req.protocol reflects x-forwarded-proto behind App Runner / the ALB.
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const link = await payoutService.createOnboardingLink(req.user!.userId, origin);
       sendSuccess(res, "Onboarding link created", link);
     } catch (err) { next(err); }
   }

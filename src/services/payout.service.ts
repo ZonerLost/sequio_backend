@@ -133,13 +133,24 @@ export class PayoutService {
    * The link is single-use and expires in minutes, so the app must fetch one each time the owner taps
    * "set up payouts" rather than caching it.
    */
-  async createOnboardingLink(userId: string): Promise<{ url: string; expiresAt: Date; accountId: string }> {
-    if (!ENV.STRIPE_CONNECT_RETURN_URL || !ENV.STRIPE_CONNECT_REFRESH_URL) {
+  async createOnboardingLink(
+    userId: string,
+    /** This server's public origin, used only when the app's deep links are not configured. */
+    publicOrigin?: string
+  ): Promise<{ url: string; expiresAt: Date; accountId: string; returnsTo: "app" | "web" }> {
+    // Stripe insists on a return and a refresh URL, and it redirects a browser to them. Refusing to
+    // create the link when the app's deep links are unset made getting paid impossible over a
+    // cosmetic gap, so fall back to this server's own hosted pages.
+    const fallback = publicOrigin?.replace(/\/$/, "");
+    const returnUrl = ENV.STRIPE_CONNECT_RETURN_URL || (fallback && `${fallback}/payouts/return`);
+    const refreshUrl = ENV.STRIPE_CONNECT_REFRESH_URL || (fallback && `${fallback}/payouts/refresh`);
+    if (!returnUrl || !refreshUrl) {
       throw new AppError(
-        "Payout onboarding is not configured on this server yet",
+        "Payout onboarding cannot determine where to send the owner back to",
         HTTP_STATUS.SERVICE_UNAVAILABLE
       );
     }
+    const returnsTo: "app" | "web" = ENV.STRIPE_CONNECT_RETURN_URL ? "app" : "web";
 
     const user = await userRepo.findById(userId);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
@@ -169,12 +180,14 @@ export class PayoutService {
     const link = await stripeRequest<{ url: string; expires_at: number }>("POST", "/account_links", {
       account: accountId,
       type: "account_onboarding",
-      refresh_url: ENV.STRIPE_CONNECT_REFRESH_URL,
-      return_url: ENV.STRIPE_CONNECT_RETURN_URL,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
       collect: "currently_due",
     });
 
-    return { url: link.url, expiresAt: new Date(link.expires_at * 1000), accountId };
+    // returnsTo tells a client whether Stripe will deep-link back into the app ("app") or land on
+    // this server's page ("web"), so it knows whether to expect a resume or to poll on next foreground.
+    return { url: link.url, expiresAt: new Date(link.expires_at * 1000), accountId, returnsTo };
   }
 
   /**

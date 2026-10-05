@@ -9,6 +9,7 @@ import { ENV } from "./config/env";
 import { logger } from "./config/logger";
 import { swaggerSpec } from "./config/swagger";
 import routes from "./routes/index";
+import payoutPages from "./routes/payout-pages.routes";
 import { errorHandler, notFound } from "./middleware/error.middleware";
 
 const app = express();
@@ -77,6 +78,9 @@ app.get("/api-docs.json", (_, res) => {
 
 // ─── API Routes ────────────────────────────────────────────
 app.use(`/api/${ENV.API_VERSION}`, routes);
+
+// Browser pages Stripe returns owners to after Connect onboarding — not API resources, so no prefix.
+app.use("/payouts", payoutPages);
 
 // ─── Error Handling ────────────────────────────────────────
 app.use(notFound);

@@ -6,30 +6,35 @@ import { logger } from "./config/logger";
 import { initSocket, setIO } from "./socket";
 
 /**
- * Payouts are configured through four env vars, and a *partial* configuration is the dangerous case:
- * the status endpoint answers happily while onboarding returns 503, with nothing anywhere saying why.
- * All four missing is simply "the feature is off" and stays quiet.
+ * Three keys are required (secret, publishable, webhook secret) and the two app deep links are
+ * optional — without them Stripe returns owners to this server's own pages. A *partial* configuration
+ * is the dangerous case: some endpoints answer happily while others 503, with nothing saying why. All
+ * three missing is simply "the feature is off" and stays quiet.
  */
 const reportPayoutConfig = (): void => {
   const missing = (
     [
       ["STRIPE_SECRET_KEY", ENV.STRIPE_SECRET_KEY],
+      ["STRIPE_PUBLISHABLE_KEY", ENV.STRIPE_PUBLISHABLE_KEY],
       ["STRIPE_WEBHOOK_SECRET", ENV.STRIPE_WEBHOOK_SECRET],
-      ["STRIPE_CONNECT_RETURN_URL", ENV.STRIPE_CONNECT_RETURN_URL],
-      ["STRIPE_CONNECT_REFRESH_URL", ENV.STRIPE_CONNECT_REFRESH_URL],
     ] as const
   )
     .filter(([, value]) => !value)
     .map(([name]) => name);
 
-  if (missing.length === 4) {
+  // Optional: without them Stripe returns owners to this server's hosted pages instead of the app.
+  if (!ENV.STRIPE_CONNECT_RETURN_URL || !ENV.STRIPE_CONNECT_REFRESH_URL) {
+    logger.info("💸 Payouts: no app deep links set — owners will return to the web pages at /payouts");
+  }
+
+  if (missing.length === 3) {
     logger.info("💸 Payouts: not configured (Stripe Connect endpoints will answer 503)");
     return;
   }
   if (missing.length > 0) {
     logger.warn(
-      `💸 Payouts: PARTIALLY configured — missing ${missing.join(", ")}. ` +
-        "Onboarding will answer 503 until every one is set."
+      `💸 Payments/payouts: PARTIALLY configured — missing ${missing.join(", ")}. ` +
+        "Charging and onboarding answer 503 until each one is set."
     );
     return;
   }
