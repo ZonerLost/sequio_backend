@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { ENV } from "../config/env";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
+import { logger } from "../config/logger";
 
 /**
  * Stripe over plain HTTPS, deliberately without the `stripe` SDK.
@@ -19,6 +20,19 @@ const TIMEOUT_MS = 20_000;
 const SIGNATURE_TOLERANCE_SECONDS = 300;
 
 export const stripeConfigured = (): boolean => Boolean(ENV.STRIPE_SECRET_KEY);
+
+/**
+ * Stripe errors that describe this platform's own configuration rather than the current request.
+ * They are written for developers — the Connect one tells the reader to run the Stripe CLI — so they
+ * must never reach an app user. Narrow on purpose: a declined card or a bad id still passes through
+ * with Stripe's own wording, which is genuinely useful to a client.
+ */
+const PLATFORM_CONFIG_ERRORS = [
+  /signed up for Connect/i, // Connect was never enabled on the account
+  /Invalid API Key/i,
+  /(test|live)mode key.*(live|test)mode/i, // keys crossed between modes
+  /You did not provide an API key/i,
+];
 
 /** Stripe takes form-encoded bodies with bracketed paths: metadata[userId], capabilities[transfers][requested]. */
 const encode = (params: Record<string, unknown>, prefix = ""): string[] => {
@@ -97,8 +111,22 @@ export const stripeRequest = async <T>(
 
   if (!response.ok) {
     const message = json.error?.message ?? `Stripe returned ${response.status}`;
+
+    // Some Stripe 4xx messages describe *our* setup, not anything the user did, and they are written
+    // for developers: the Connect one literally tells the reader to run the Stripe CLI. Passing that
+    // through meant an owner tapping "Set up payouts" saw internal tooling instructions. These become
+    // a plain 503, with the real message kept in the logs where it is useful.
+    if (PLATFORM_CONFIG_ERRORS.some((pattern) => pattern.test(message))) {
+      logger.error("Stripe platform configuration error", { path, status: response.status, message });
+      throw new AppError(
+        "Payments are not fully set up on this server yet. Please try again later.",
+        HTTP_STATUS.SERVICE_UNAVAILABLE
+      );
+    }
+
+    // Anything else is about this request — a declined card, a bad id — so Stripe's wording helps.
     // 4xx from Stripe is our request's fault, so keep it a 4xx rather than reporting a server error.
-    const status = response.status >= 400 && response.status < 500 ? HTTP_STATUS.BAD_REQUEST : 502;
+    const status = response.status >= 400 && response.status < 500 ? HTTP_STATUS.BAD_REQUEST : HTTP_STATUS.BAD_GATEWAY;
     throw new AppError(`Stripe: ${message}`, status);
   }
 
