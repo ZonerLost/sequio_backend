@@ -4,7 +4,7 @@ import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { ENV } from "../config/env";
 import { logger } from "../config/logger";
-import { StripeConnectAccount, stripeRequest } from "../helpers/stripe.helper";
+import { StripeConnectAccount, stripeRequest, stripeRequestV2 } from "../helpers/stripe.helper";
 
 const userRepo = new UserRepository();
 
@@ -157,23 +157,50 @@ export class PayoutService {
 
     let accountId = user.stripeAccount?.id;
     if (!accountId) {
-      const account = await stripeRequest<StripeConnectAccount>(
+      // v2 requires a contact email, and a phone-only signup has a placeholder address rather than a
+      // real one. Say so plainly instead of letting Stripe reject it with its own wording.
+      const contactEmail = user.email?.endsWith("@placeholder.local") ? undefined : user.email;
+      if (!contactEmail) {
+        throw new AppError(
+          "Add an email address to your profile before setting up payouts",
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+
+      // Accounts v2: Stripe refuses POST /v1/accounts for new Connect integrations. The resulting
+      // acct_ id still works on every v1 endpoint, so links, status and charges are unchanged.
+      const account = await stripeRequestV2<{ id: string }>(
         "POST",
-        "/accounts",
+        "/core/accounts",
         {
-          type: "express",
-          email: user.email?.endsWith("@placeholder.local") ? undefined : user.email,
-          capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
-          business_type: "individual",
+          contact_email: contactEmail,
+          display_name: [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined,
+          dashboard: "express",
+          identity: { country: ENV.STRIPE_CONNECT_ACCOUNT_COUNTRY, entity_type: "individual" },
+          configuration: {
+            // merchant = can be charged on behalf of; recipient = can receive transfers, which is
+            // what a destination charge needs.
+            merchant: { capabilities: { card_payments: { requested: true } } },
+            recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } },
+          },
+          defaults: {
+            currency: ENV.STRIPE_CONNECT_ACCOUNT_COUNTRY === "ca" ? "cad" : "usd",
+            // The platform collects the application fee and carries losses — the only combination
+            // this integration accepts, and it requires the Connect platform profile to be completed.
+            responsibilities: { fees_collector: "application", losses_collector: "application" },
+          },
           metadata: { userId },
         },
         // Keyed on the user, so a retry or a double tap cannot create a second connected account.
         `connect-account-${userId}`
       );
       accountId = account.id;
+
+      // Read it back through v1 so the stored shape stays exactly what the rest of this file expects.
+      const v1 = await stripeRequest<StripeConnectAccount>("GET", `/accounts/${accountId}`);
       await UserModel.updateOne(
         { _id: userId },
-        { $set: { stripeAccount: PayoutService.fromStripe(account) } }
+        { $set: { stripeAccount: PayoutService.fromStripe(v1) } }
       );
     }
 

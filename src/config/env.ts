@@ -33,6 +33,10 @@ export const ENV = {
   // Not a secret — it is designed to ship inside client apps. Served by GET /payments/config so a
   // test-to-live switch, or a key rotation, needs no app release.
   STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY || "",
+  // Country of the connected accounts we create (ISO-3166-1 alpha-2, lowercase). Owners are in
+  // Quebec, so "ca" — but the platform's own Stripe account is US-registered, and whether a US
+  // platform may create CA accounts is unresolved, so this is configurable rather than compiled in.
+  STRIPE_CONNECT_ACCOUNT_COUNTRY: (process.env.STRIPE_CONNECT_ACCOUNT_COUNTRY || "ca").toLowerCase(),
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
   // Where Stripe sends the owner back after hosted onboarding. Deep links in the mobile app.
   STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || "",

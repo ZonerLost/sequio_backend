@@ -13,8 +13,12 @@ import { logger } from "../config/logger";
  */
 
 const API = "https://api.stripe.com/v1";
+const API_V2 = "https://api.stripe.com/v2";
 // Pinned: an account's default API version can change under us, which would silently alter payloads.
 const STRIPE_VERSION = "2024-06-20";
+// Accounts v2 lives behind a dated release. Verified accepted by this account; the companion
+// ".preview" alias works too, but a fixed name cannot drift.
+const STRIPE_VERSION_V2 = "2026-09-30.endive";
 const TIMEOUT_MS = 20_000;
 /** Stripe's own recommendation: reject signatures older than five minutes (replay protection). */
 const SIGNATURE_TOLERANCE_SECONDS = 300;
@@ -29,6 +33,9 @@ export const stripeConfigured = (): boolean => Boolean(ENV.STRIPE_SECRET_KEY);
  */
 const PLATFORM_CONFIG_ERRORS = [
   /signed up for Connect/i, // Connect was never enabled on the account
+  /responsibilities of managing losses/i, // Connect platform profile not completed
+  /This account configuration is not supported/i,
+  /no longer recommends Accounts v1/i, // we are calling the wrong API version
   /Invalid API Key/i,
   /(test|live)mode key.*(live|test)mode/i, // keys crossed between modes
   /You did not provide an API key/i,
@@ -180,6 +187,69 @@ export const verifyStripeWebhook = <T>(rawBody: Buffer | string, signatureHeader
   if (!matches) throw new AppError("Stripe signature does not match", HTTP_STATUS.UNAUTHORIZED);
 
   return JSON.parse(payload) as T;
+};
+
+/**
+ * One Accounts v2 call. Separate from stripeRequest because v2 differs in three ways that matter:
+ * a /v2 base path, a JSON body rather than form encoding, and its own dated API version.
+ *
+ * Only account *creation* needs this. Stripe documents that a v2 account id can be passed to v1
+ * endpoints, so account links, status reads and PaymentIntents all stay on v1 and keep working.
+ */
+export const stripeRequestV2 = async <T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: Record<string, unknown>,
+  idempotencyKey?: string
+): Promise<T> => {
+  if (!stripeConfigured()) {
+    throw new AppError(
+      "Payments are not configured on this server yet",
+      HTTP_STATUS.SERVICE_UNAVAILABLE
+    );
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${ENV.STRIPE_SECRET_KEY}`,
+    "Stripe-Version": STRIPE_VERSION_V2,
+    "Content-Type": "application/json",
+  };
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_V2}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new AppError(
+      `Could not reach Stripe (${(err as Error).name})`,
+      HTTP_STATUS.SERVICE_UNAVAILABLE
+    );
+  }
+
+  const text = await response.text();
+  const json = text ? (JSON.parse(text) as T & StripeErrorBody) : ({} as T & StripeErrorBody);
+
+  if (!response.ok) {
+    const message = json.error?.message ?? `Stripe returned ${response.status}`;
+    // Same rule as v1: a message about our own setup is for the logs, not for an app user. The
+    // platform-profile one lands here until the loss responsibilities are declared in the dashboard.
+    if (PLATFORM_CONFIG_ERRORS.some((pattern) => pattern.test(message))) {
+      logger.error("Stripe platform configuration error", { path, status: response.status, message });
+      throw new AppError(
+        "Payments are not fully set up on this server yet. Please try again later.",
+        HTTP_STATUS.SERVICE_UNAVAILABLE
+      );
+    }
+    const status = response.status >= 400 && response.status < 500 ? HTTP_STATUS.BAD_REQUEST : HTTP_STATUS.BAD_GATEWAY;
+    throw new AppError(`Stripe: ${message}`, status);
+  }
+
+  return json as T;
 };
 
 /** The subset of a Connect account this app reads. Bank details deliberately never leave Stripe. */
