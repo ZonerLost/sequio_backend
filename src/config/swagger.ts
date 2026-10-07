@@ -361,7 +361,7 @@ const options: swaggerJsdoc.Options = {
       { name: "Auth", description: "Authentication endpoints" },
       { name: "Users", description: "User profile management" },
       { name: "Items", description: "Item listing management" },
-      { name: "Bookings", description: "Booking management" },
+      { name: "Bookings", description: "Booking management.\n\n**`status` and `paymentStatus` are independent.** `status` is the lifecycle\n(pending | accepted | active | completed | declined | cancelled) and says nothing about money;\n`paymentStatus` is unpaid | paid | failed. A paid booking stays `accepted`, so a client deciding\nwhether to offer Pay Now must check both - offering it on `status: accepted` alone kept the button\non screen after a successful charge. A second attempt is refused with 409, never double-charged.\n\n`paymentStatus` is written by the Stripe webhook (authoritative) and by POST /payments. It is\nabsent on bookings created before 2026-10-07; read a missing value as `unpaid`.\n\nNote that `active` is currently never set by any code path." },
       { name: "Reviews", description: "Reviews and ratings" },
       {
         name: "Chat",

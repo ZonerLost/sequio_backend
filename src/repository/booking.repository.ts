@@ -65,6 +65,20 @@ export class BookingRepository {
     );
   }
 
+  /**
+   * Records whether a booking has been paid, without touching `status`.
+   *
+   * Deliberately separate from updateStatus: payment and lifecycle are independent here, and routing
+   * this through updateStatus would mean every caller had to restate the current status, which is
+   * exactly how a booking gets silently moved backwards.
+   */
+  async setPaymentStatus(
+    id: string,
+    paymentStatus: IBooking["paymentStatus"]
+  ): Promise<IBooking | null> {
+    return BookingModel.findByIdAndUpdate(id, { paymentStatus }, { new: true });
+  }
+
   async hasConflict(
     itemId: string,
     startDate: Date,

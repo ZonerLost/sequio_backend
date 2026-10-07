@@ -309,6 +309,10 @@ export class PaymentService {
 
     if (!payment) throw new AppError("Failed to record payment", HTTP_STATUS.INTERNAL_SERVER);
 
+    // Mark the booking too. The webhook does this as well and the two agree, which is the point:
+    // whichever arrives first, the booking stops offering Pay Now.
+    await bookingRepo.setPaymentStatus(data.bookingId, "paid");
+
     notificationService
       .send({
         userId: getId(booking.owner),
@@ -336,6 +340,10 @@ export class PaymentService {
         stripePaymentIntentId: intent.id,
         externalReference: intent.id,
       });
+
+      // The booking has to carry this too, or a client cannot tell a paid booking from an unpaid one
+      // and keeps offering "Pay Now" after a successful charge.
+      await bookingRepo.setPaymentStatus(getId(payment.booking), "paid");
 
       notificationService
         .send({
@@ -371,6 +379,8 @@ export class PaymentService {
             externalReference: intent.id,
           });
 
+          await bookingRepo.setPaymentStatus(bookingId, "paid");
+
           notificationService
             .send({
               userId: getId(booking.owner),
@@ -402,6 +412,9 @@ export class PaymentService {
       await paymentRepo.updateStatus(payment._id.toString(), "failed", {
         stripePaymentIntentId: intent.id,
       });
+      // "failed" rather than back to "unpaid": the renter should see that an attempt was made and
+      // did not go through, and Pay Now stays available either way.
+      await bookingRepo.setPaymentStatus(getId(payment.booking), "failed");
       logger.warn("Payment marked failed via Stripe webhook", {
         paymentId: payment._id.toString(),
         intentId: intent.id,

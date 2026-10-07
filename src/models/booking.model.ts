@@ -63,6 +63,19 @@ export interface IBooking extends Document {
   };
   discountCode?: string;
   status: "pending" | "accepted" | "active" | "completed" | "declined" | "cancelled";
+  /**
+   * Whether this booking has been paid for. Denormalised onto the booking on purpose.
+   *
+   * `status` says nothing about money — a paid booking and an unpaid one are both `accepted` — so a
+   * client had no way to tell them apart and kept offering "Pay Now" after a successful charge. The
+   * renter saw a success message and then the same button, which reads like the payment failed. A
+   * second tap is refused with a 409 so no one is double-charged, but the only real fix is for the
+   * booking to carry the fact.
+   *
+   * Written by the Stripe webhook, which is authoritative, and by the record-payment path. Kept here
+   * rather than derived from the Payment collection so listing bookings stays one query.
+   */
+  paymentStatus: "unpaid" | "paid" | "failed";
   preRentalPhotos: string[];
   postRentalPhotos: string[];
   declineReason?: string;
@@ -147,6 +160,13 @@ const BookingSchema = new Schema<IBooking>(
       type: String,
       enum: ["pending", "accepted", "active", "completed", "declined", "cancelled"],
       default: "pending",
+    },
+    // Bookings written before 2026-10-07 have no value here. A reader must treat a missing
+    // paymentStatus as "unpaid" rather than assuming the default was applied retroactively.
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "paid", "failed"],
+      default: "unpaid",
     },
     preRentalPhotos: [{ type: String }],
     postRentalPhotos: [{ type: String }],
