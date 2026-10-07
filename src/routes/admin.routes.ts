@@ -9,6 +9,20 @@ const ctrl = new AdminController();
 
 const adminGuard = [authenticate, authorize("admin")];
 
+const notificationSettingsSchema = Joi.object({
+  enabled: Joi.boolean().optional(),
+  // Validated against the real type list in the service, so an unknown type is a 400 rather than a
+  // silently stored value that mutes nothing.
+  mutedTypes: Joi.array().items(Joi.string()).optional(),
+}).or("enabled", "mutedTypes");
+
+const notificationQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  type: Joi.string().optional(),
+  search: Joi.string().allow("").optional(),
+});
+
 const cancelBookingSchema = Joi.object({
   // Required, and shown to both parties, so it has to be something a person can read.
   reason: Joi.string().trim().min(3).max(500).required(),
@@ -44,6 +58,13 @@ const querySchema = Joi.object({
 
 // ── Stats ─────────────────────────────────────────────────
 router.get("/stats", ...adminGuard, validate(statsQuerySchema, "query"), ctrl.getPlatformStats.bind(ctrl));
+
+// ── Notifications ─────────────────────────────────────────
+// "settings" before ":id"-style routes is not an issue here (there is no /notifications/:id), but
+// the order is kept deliberate in case one is added.
+router.get("/notifications/settings", ...adminGuard, ctrl.getNotificationSettings.bind(ctrl));
+router.put("/notifications/settings", ...adminGuard, validate(notificationSettingsSchema), ctrl.saveNotificationSettings.bind(ctrl));
+router.get("/notifications", ...adminGuard, validate(notificationQuerySchema, "query"), ctrl.listNotifications.bind(ctrl));
 
 // ── Users ─────────────────────────────────────────────────
 router.get("/users", ...adminGuard, validate(querySchema, "query"), ctrl.getUsers.bind(ctrl));

@@ -39,6 +39,35 @@ export class AdminController {
     } catch (err) { next(err); }
   }
 
+  async getNotificationSettings(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await adminService.getNotificationSettings();
+      sendSuccess(res, "Notification settings retrieved", result);
+    } catch (err) { next(err); }
+  }
+
+  async saveNotificationSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await adminService.saveNotificationSettings(
+        { enabled: req.body.enabled, mutedTypes: req.body.mutedTypes },
+        String(req.user?.userId ?? "")
+      );
+      sendSuccess(res, "Notification settings saved", result);
+    } catch (err) { next(err); }
+  }
+
+  async listNotifications(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { rows, pagination } = await adminService.listNotifications({
+        page: Number(req.query.page) || 1,
+        limit: Number(req.query.limit) || 10,
+        type: req.query.type ? String(req.query.type) : undefined,
+        search: req.query.search ? String(req.query.search) : undefined,
+      });
+      sendSuccess(res, "Notifications retrieved", rows, 200, pagination);
+    } catch (err) { next(err); }
+  }
+
   async getBookingSeries(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await adminService.getBookingSeries({

@@ -7,6 +7,13 @@ import { EcoImpactModel } from "../models/eco.model";
 import { ReviewModel } from "../models/review.model";
 import { getId } from "../helpers/id.helper";
 import { notifyBookingCancelledByAdmin } from "../helpers/notification.triggers";
+import { PlatformSettingsModel } from "../models/platform-settings.model";
+import {
+  NotificationModel,
+  NOTIFICATION_TYPES,
+  NotificationType,
+} from "../models/notification.model";
+import { invalidateNotificationSettingsCache } from "./notification.service";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -271,6 +278,126 @@ export class AdminService {
       listings: { boosted: boostedListings, nonBoosted: nonBoostedListings, total: totalListings },
       range: { start: start.toISOString(), end: end.toISOString() },
     };
+  }
+
+  // ── Notifications ───────────────────────────────────────
+
+  /**
+   * The notification switches an administrator can change.
+   *
+   * `availableTypes` is derived from the code, not stored, so a type added in a release shows up
+   * here without a migration — and a type that no longer exists stops being offered.
+   */
+  async getNotificationSettings() {
+    const doc = await PlatformSettingsModel.findOne({ key: "platform" })
+      .select("notifications updatedAt")
+      .lean();
+
+    // Counts per type over the last 30 days, so an admin muting something can see how noisy it is.
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const counts = await NotificationModel.aggregate([
+      { $match: { createdAt: { $gte: since } } },
+      { $group: { _id: "$type", count: { $sum: 1 } } },
+    ]);
+    const countByType = new Map(counts.map((c) => [c._id, c.count]));
+
+    return {
+      enabled: doc?.notifications?.enabled ?? true,
+      mutedTypes: doc?.notifications?.mutedTypes ?? [],
+      updatedAt: doc?.updatedAt ?? null,
+      availableTypes: NOTIFICATION_TYPES.map((type) => ({
+        type,
+        last30Days: countByType.get(type) ?? 0,
+      })),
+    };
+  }
+
+  async saveNotificationSettings(
+    input: { enabled?: boolean; mutedTypes?: string[] },
+    actorId: string
+  ) {
+    const unknown = (input.mutedTypes ?? []).filter(
+      (t) => !NOTIFICATION_TYPES.includes(t as NotificationType)
+    );
+    if (unknown.length) {
+      throw new AppError(
+        `Unknown notification type(s): ${unknown.join(", ")}`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const update: Record<string, unknown> = { updatedBy: actorId };
+    if (input.enabled !== undefined) update["notifications.enabled"] = input.enabled;
+    if (input.mutedTypes !== undefined) {
+      update["notifications.mutedTypes"] = [...new Set(input.mutedTypes)];
+    }
+
+    await PlatformSettingsModel.findOneAndUpdate({ key: "platform" }, update, {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    });
+
+    // The sender caches settings, so tell it to re-read rather than waiting out the TTL.
+    invalidateNotificationSettingsCache();
+    return this.getNotificationSettings();
+  }
+
+  /**
+   * Every notification on the platform, newest first.
+   *
+   * The panel used to call `GET /notifications`, which returns the *signed-in admin's own* feed —
+   * so the log showed only their notifications and the "recipient" column fell back to a literal
+   * "System Admin" for every row. This is the log that screen claims to be.
+   */
+  async listNotifications(params: {
+    page?: number;
+    limit?: number;
+    type?: string;
+    search?: string;
+  }) {
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(params.limit) || 10));
+
+    const filter: Record<string, unknown> = {};
+    if (params.type && params.type !== "all") filter.type = params.type;
+
+    // Search covers the notification text and the recipient. The recipient lives on another
+    // collection, so matching users first is what makes it searchable at all — the panel's
+    // client-side filter could only ever search the page it had already loaded.
+    const search = String(params.search || "").trim();
+    if (search) {
+      // Strip regex metacharacters rather than escaping them: a search box has no use for them, and
+      // an unescaped one from a user is a denial-of-service waiting to happen.
+      const safe = search.replace(/[^\w\s@.-]/g, "");
+      if (!safe) return { rows: [], pagination: buildPagination(0, page, limit) };
+      const rx = new RegExp(safe, "i");
+      const userIds = await UserModel.find({
+        $or: [{ email: rx }, { firstName: rx }, { lastName: rx }],
+      })
+        .select("_id")
+        .limit(500)
+        .lean();
+      filter.$or = [
+        { title: rx },
+        { body: rx },
+        ...(userIds.length ? [{ user: { $in: userIds.map((u) => u._id) } }] : []),
+      ];
+    }
+
+    const [rows, total] = await Promise.all([
+      NotificationModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("user", "firstName lastName email")
+        .lean(),
+      NotificationModel.countDocuments(filter),
+    ]);
+
+    // buildPagination, not a hand-rolled object: every other endpoint returns this exact shape and
+    // the admin panel reads totalPages/hasNext off it.
+    return { rows, pagination: buildPagination(total, page, limit) };
   }
 
   async banUser(userId: string) {

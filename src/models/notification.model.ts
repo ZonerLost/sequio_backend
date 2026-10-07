@@ -1,19 +1,29 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-export type NotificationType =
-  | "booking_request"
-  | "booking_accepted"
-  | "booking_declined"
-  | "booking_cancelled"
-  | "booking_completed"
-  | "review_received"
-  | "message_received"
-  | "dispute_opened"
-  | "dispute_resolved"
-  | "payment_received"
-  | "item_added"
-  | "account_created"
-  | "identity_verified";
+/**
+ * Every notification type, as a runtime value.
+ *
+ * The union is derived from this array rather than written twice: the admin panel lists the types an
+ * administrator can mute, and a hand-maintained second copy would drift the moment someone added a
+ * type — leaving it unmutable, or offering one that no longer exists.
+ */
+export const NOTIFICATION_TYPES = [
+  "booking_request",
+  "booking_accepted",
+  "booking_declined",
+  "booking_cancelled",
+  "booking_completed",
+  "review_received",
+  "message_received",
+  "dispute_opened",
+  "dispute_resolved",
+  "payment_received",
+  "item_added",
+  "account_created",
+  "identity_verified",
+] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export interface INotification extends Document {
   _id: mongoose.Types.ObjectId;

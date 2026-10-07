@@ -5,8 +5,44 @@ import { buildPagination } from "../helpers/pagination.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { emitConversationUpdate } from "../socket";
+import { PlatformSettingsModel } from "../models/platform-settings.model";
+import { logger } from "../config/logger";
 
 const notificationRepo = new NotificationRepository();
+
+/**
+ * Settings are read on nearly every notification, so they are cached briefly rather than fetched
+ * each time. Ten seconds is short enough that an admin toggling a switch sees the effect while they
+ * are still looking at the screen, and long enough that a burst of notifications is one query.
+ */
+const SETTINGS_TTL_MS = 10_000;
+let settingsCache: { at: number; enabled: boolean; muted: Set<string> } | null = null;
+
+export const invalidateNotificationSettingsCache = (): void => {
+  settingsCache = null;
+};
+
+const loadSettings = async (): Promise<{ enabled: boolean; muted: Set<string> }> => {
+  if (settingsCache && Date.now() - settingsCache.at < SETTINGS_TTL_MS) return settingsCache;
+  try {
+    const doc = await PlatformSettingsModel.findOne({ key: "platform" })
+      .select("notifications")
+      .lean();
+    settingsCache = {
+      at: Date.now(),
+      // No settings document means nothing has been configured, which must mean "send everything".
+      enabled: doc?.notifications?.enabled ?? true,
+      muted: new Set(doc?.notifications?.mutedTypes ?? []),
+    };
+  } catch (err) {
+    // Never let a settings read failure swallow a notification — fail open.
+    logger.warn("Could not read notification settings; sending anyway", {
+      message: (err as Error).message,
+    });
+    return { enabled: true, muted: new Set<string>() };
+  }
+  return settingsCache;
+};
 
 export class NotificationService {
   // Core method — used internally by other services
@@ -17,6 +53,12 @@ export class NotificationService {
     body: string;
     data?: Record<string, string>;
   }): Promise<void> {
+    // An administrator can mute a notification type, or all of them, from the admin panel. Muting
+    // means not creating the row at all: a stored-but-hidden notification would still drive unread
+    // counts and reappear the moment the switch flipped back.
+    const settings = await loadSettings();
+    if (!settings.enabled || settings.muted.has(data.type)) return;
+
     const notification = await notificationRepo.create(data);
 
     // Emit real-time notification via Socket.io
