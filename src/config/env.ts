@@ -49,6 +49,26 @@ export const ENV = {
   // this server's own /payouts pages, or set a universal/app link once one exists.
   STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || "",
   STRIPE_CONNECT_REFRESH_URL: process.env.STRIPE_CONNECT_REFRESH_URL || "",
+  /**
+   * The business profile Stripe attaches to every connected account.
+   *
+   * These are facts about Atussa, not about the owner, so they are prefilled rather than asked.
+   * Leaving them unasked removes four fields from an onboarding flow that already asks fifteen —
+   * measured against the live account on 2026-10-07.
+   *
+   * CONNECT_BUSINESS_URL must be a real domain: Stripe rejects example.com and its subdomains with
+   * "Not a valid URL". The MCC is a card-network merchant category; 5734 is computer/equipment
+   * retail, which is the closest fit for tool rental.
+   */
+  CONNECT_BUSINESS_URL: process.env.CONNECT_BUSINESS_URL || "https://atussa.ca",
+  CONNECT_BUSINESS_MCC: process.env.CONNECT_BUSINESS_MCC || "5734",
+  CONNECT_BUSINESS_DESCRIPTION:
+    process.env.CONNECT_BUSINESS_DESCRIPTION || "Peer-to-peer tool and equipment rental",
+  // Empty on purpose: setting it removes one more question from owner onboarding, but an invented
+  // number would be published to real customers as the way to reach support. Set it to a line
+  // somebody answers.
+  CONNECT_SUPPORT_PHONE: process.env.CONNECT_SUPPORT_PHONE || "",
+
   // The app's own deep links. Not sent to Stripe: the hosted /payouts pages bounce to these, which is
   // how an owner gets back into the app from a flow that can only redirect to https.
   APP_PAYOUT_RETURN_DEEPLINK: process.env.APP_PAYOUT_RETURN_DEEPLINK || "atussa://payouts/done",
