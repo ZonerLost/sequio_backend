@@ -73,9 +73,15 @@
  *       taps the button rather than caching it. Account creation is idempotency-keyed per user, so a
  *       double tap cannot produce two connected accounts.
  *
- *       Stripe returns the owner to the app's configured deep link when they finish or abandon the
- *       flow; call `GET /users/payout-account` afterwards for the resulting state, and expect
- *       `restricted` to be a normal outcome that needs another link.
+ *       **Coming back:** Stripe can only redirect to an http(s) URL, so it returns the owner to this
+ *       server's own page, which then redirects to the app's scheme (`atussa://payouts/done`, or
+ *       `atussa://payouts/retry` if the link had expired). `returnsTo` says which hop to expect —
+ *       `"web"` is the normal case and means the server page runs first.
+ *
+ *       Either way, call `GET /users/payout-account` afterwards for the resulting state: on the deep
+ *       link **and** when the app next returns to the foreground, since a blocked redirect would
+ *       otherwise leave the screen stale. Expect `restricted` to be a normal outcome that needs
+ *       another link.
  *     tags: [Payouts]
  *     security:
  *       - BearerAuth: []
@@ -95,6 +101,13 @@
  *                     url: { type: string, description: Open this in a browser or web view }
  *                     expiresAt: { type: string, format: date-time }
  *                     accountId: { type: string, description: Stripe connected account id (acct_...) }
+ *                     returnsTo:
+ *                       type: string
+ *                       enum: [app, web]
+ *                       description: >
+ *                         Where Stripe sends the owner on exit. "web" (the normal case) means this
+ *                         server's page handles the return and then redirects into the app; "app"
+ *                         means a real https app link is configured and Stripe goes straight there.
  *       503:
  *         description: Stripe is not configured on this server, or is unreachable
  */

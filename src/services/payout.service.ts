@@ -142,15 +142,31 @@ export class PayoutService {
     // create the link when the app's deep links are unset made getting paid impossible over a
     // cosmetic gap, so fall back to this server's own hosted pages.
     const fallback = publicOrigin?.replace(/\/$/, "");
-    const returnUrl = ENV.STRIPE_CONNECT_RETURN_URL || (fallback && `${fallback}/payouts/return`);
-    const refreshUrl = ENV.STRIPE_CONNECT_REFRESH_URL || (fallback && `${fallback}/payouts/refresh`);
+    // Stripe only accepts http(s) here. Anything else — an app scheme, a typo — is ignored with a
+    // warning rather than sent, because Stripe answers "Not a valid URL" and the owner simply cannot
+    // start onboarding at all.
+    const httpsOnly = (value: string, name: string): string | undefined => {
+      if (!value) return undefined;
+      if (/^https?:\/\//i.test(value)) return value;
+      logger.warn(`${name} is not an http(s) URL, so Stripe cannot use it — falling back to the hosted page`, { value });
+      return undefined;
+    };
+
+    const returnUrl =
+      httpsOnly(ENV.STRIPE_CONNECT_RETURN_URL, "STRIPE_CONNECT_RETURN_URL") ||
+      (fallback && `${fallback}/payouts/return`);
+    const refreshUrl =
+      httpsOnly(ENV.STRIPE_CONNECT_REFRESH_URL, "STRIPE_CONNECT_REFRESH_URL") ||
+      (fallback && `${fallback}/payouts/refresh`);
     if (!returnUrl || !refreshUrl) {
       throw new AppError(
         "Payout onboarding cannot determine where to send the owner back to",
         HTTP_STATUS.SERVICE_UNAVAILABLE
       );
     }
-    const returnsTo: "app" | "web" = ENV.STRIPE_CONNECT_RETURN_URL ? "app" : "web";
+    // "web" whenever Stripe lands on our page first — even though that page then bounces into the
+    // app, the client should still re-check on foreground in case the bounce is blocked.
+    const returnsTo: "app" | "web" = returnUrl === ENV.STRIPE_CONNECT_RETURN_URL ? "app" : "web";
 
     const user = await userRepo.findById(userId);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);

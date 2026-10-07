@@ -127,7 +127,8 @@ Authorization: Bearer <accessToken>
 ```
 
 * **Client Action**: Open `data.url` in an in-app browser (`url_launcher` in Flutter, `InAppBrowser` in React Native).
-* **Deep Links**: When the owner finishes or cancels, Stripe redirects back to the configured app deep links (`STRIPE_CONNECT_RETURN_URL` / `STRIPE_CONNECT_REFRESH_URL`). On return, call `GET /users/payout-account` to refresh status.
+* **Coming back**: Stripe only redirects to **http(s)** — a custom scheme is rejected outright — so it returns the owner to `/payouts/return` (or `/payouts/refresh` if the link expired) on this server, and that page immediately redirects to `APP_PAYOUT_RETURN_DEEPLINK` (`atussa://payouts/done`). Register that scheme in the app and the owner lands straight back in it; if the redirect is blocked the page explains what to do, so nothing breaks.
+* **Always re-check on resume**: `returnsTo` is `"web"` whenever Stripe lands on the server page first, which is the normal case. Treat it as a hint, not a guarantee — call `GET /users/payout-account` both on the deep link *and* when the app next comes to the foreground.
 
 ---
 

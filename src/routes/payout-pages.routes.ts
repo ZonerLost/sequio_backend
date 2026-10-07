@@ -1,18 +1,27 @@
 import { Router, Request, Response } from "express";
+import { ENV } from "../config/env";
 
 /**
  * The two browser pages Stripe sends an owner back to after hosted Connect onboarding.
  *
- * Stripe demands a return and a refresh URL, and it redirects a *browser* to them — so when the app's
- * deep links are not configured these stand in, instead of refusing to create the link at all. That
- * refusal is what made payout onboarding unreachable: a missing deep link is a cosmetic gap, not a
- * reason to disable getting paid.
+ * Stripe demands a return and a refresh URL, it redirects a *browser* to them, and it only accepts
+ * http(s) — an app deep link is refused outright with "Not a valid URL". These pages are therefore the
+ * bridge: Stripe lands the owner here, and the page hops to the app's own scheme. Without them,
+ * onboarding was unreachable, which is a steep price for a cosmetic gap in where the owner ends up.
  *
  * Mounted outside /api/v1 because they are pages, not API resources.
  */
 const router = Router();
 
-const page = (title: string, message: string, hint: string): string => `<!doctype html>
+// The deep link comes from env, not from a request, but it still lands in an HTML attribute and in a
+// script literal — so escape it rather than trusting a value nobody will think to re-check.
+const attr = (value: string): string =>
+  value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const inScript = (value: string): string =>
+  // A literal </script> inside the string would close the tag early, so hide the angle bracket.
+  JSON.stringify(value).replace(/</g, "\\u003c");
+
+const page = (title: string, message: string, hint: string, deepLink?: string): string => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -29,6 +38,10 @@ const page = (title: string, message: string, hint: string): string => `<!doctyp
   h1 { font-size: 1.35rem; margin: 0 0 .5rem; color: #1f4d2e; }
   p { margin: 0 0 .75rem; }
   .hint { color: #5b6b5f; font-size: .9rem; }
+  .cta {
+    display: inline-block; margin: .25rem 0 .75rem; padding: .6rem 1.25rem; border-radius: 999px;
+    background: #1f4d2e; color: #fff; text-decoration: none; font-weight: 600;
+  }
   @media (prefers-color-scheme: dark) {
     body { background: #14170f; color: #e8ebe1; }
     h1 { color: #9ec7a6; }
@@ -40,8 +53,18 @@ const page = (title: string, message: string, hint: string): string => `<!doctyp
   <main>
     <h1>${title}</h1>
     <p>${message}</p>
+    ${deepLink ? `<p><a class="cta" href="${attr(deepLink)}">Return to Atussa</a></p>` : ""}
     <p class="hint">${hint}</p>
   </main>
+  ${
+    deepLink
+      ? `<script>
+    // Stripe can only redirect to https, so the hop back into the app happens here. If the scheme is
+    // not registered — desktop browser, say — nothing happens and the text above still explains it.
+    setTimeout(function () { window.location.href = ${inScript(deepLink)}; }, 400);
+  </script>`
+      : ""
+  }
 </body>
 </html>`;
 
@@ -53,8 +76,9 @@ router.get("/return", (_req: Request, res: Response) => {
     .send(
       page(
         "Payout setup submitted",
-        "Thanks — Stripe has your details. You can close this window and return to Atussa.",
-        "Your payout status updates in the app automatically. Stripe sometimes asks for one more document, in which case the app will prompt you again."
+        "Thanks — Stripe has your details. Taking you back to Atussa…",
+        "If nothing happens, close this window and reopen the app. Your payout status updates automatically, and Stripe sometimes asks for one more document, in which case the app will prompt you again.",
+        ENV.APP_PAYOUT_RETURN_DEEPLINK || undefined
       )
     );
 });
@@ -68,7 +92,8 @@ router.get("/refresh", (_req: Request, res: Response) => {
       page(
         "That link expired",
         "Payout setup links are single-use and expire after a few minutes.",
-        "Close this window, return to Atussa and tap “Set up payouts” again to get a fresh link."
+        "If nothing happens, close this window, reopen Atussa and tap “Set up payouts” again for a fresh link.",
+        ENV.APP_PAYOUT_REFRESH_DEEPLINK || undefined
       )
     );
 });

@@ -44,7 +44,13 @@ export const ENV = {
   STRIPE_CONNECT_LOSSES_COLLECTOR:
     process.env.STRIPE_CONNECT_LOSSES_COLLECTOR === "application" ? "application" : "stripe",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
-  // Where Stripe sends the owner back after hosted onboarding. Deep links in the mobile app.
+  // Where Stripe sends the owner back after hosted onboarding. **Must be http(s)** — Stripe rejects
+  // a custom scheme with "Not a valid URL", so an app deep link cannot go here. Leave unset to use
+  // this server's own /payouts pages, or set a universal/app link once one exists.
   STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || "",
   STRIPE_CONNECT_REFRESH_URL: process.env.STRIPE_CONNECT_REFRESH_URL || "",
+  // The app's own deep links. Not sent to Stripe: the hosted /payouts pages bounce to these, which is
+  // how an owner gets back into the app from a flow that can only redirect to https.
+  APP_PAYOUT_RETURN_DEEPLINK: process.env.APP_PAYOUT_RETURN_DEEPLINK || "atussa://payouts/done",
+  APP_PAYOUT_REFRESH_DEEPLINK: process.env.APP_PAYOUT_REFRESH_DEEPLINK || "atussa://payouts/retry",
 };
