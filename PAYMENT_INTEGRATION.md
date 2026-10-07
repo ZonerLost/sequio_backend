@@ -155,6 +155,25 @@ Use `data.pricing.totalAmount` for display on the confirmation button, and displ
 1. Renter calls `POST /bookings` with `itemId`, `startDate`, `endDate`, `deliveryType`. The booking is created with `status: "pending"`.
 2. Owner receives notification and calls `PUT /bookings/:id/accept`. The booking becomes `status: "accepted"`.
 3. **Payment is only permitted once the booking is `"accepted"`.**
+4. **And only once.** Check `booking.paymentStatus` as well as `status` — they are independent, and a
+   paid booking *stays* `accepted`. Offer "Pay Now" when
+   `status === "accepted" && paymentStatus !== "paid"`.
+
+| `paymentStatus` | Meaning | Offer Pay Now? |
+|---|---|---|
+| `unpaid` | no successful charge yet | yes |
+| `paid` | charge succeeded | **no** |
+| `failed` | an attempt failed; they can retry | yes |
+| `refunded` | an admin refunded it, money is back with the renter | yes |
+| *absent* | booking predates the field (before 2026-10-07) | yes — treat as `unpaid` |
+
+Treat a missing value as `unpaid`, never as paid. The worst case that way is offering Pay Now on a
+booking already paid, which the server refuses with **409** rather than charging twice. Assuming paid
+would hide the button on genuinely unpaid bookings and leave the owner with no way to get paid.
+
+`paymentStatus` is written by the Stripe webhook, which is authoritative, and by `POST /payments`.
+Keying the button off `status` alone is what kept Pay Now on screen after a successful charge, so the
+renter saw a success message and then the same button.
 
 ---
 
