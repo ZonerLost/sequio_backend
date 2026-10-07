@@ -89,6 +89,17 @@ export class AdminController {
     } catch (err) { next(err); }
   }
 
+  async updateUserProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = await adminService.updateUserProfile(String(req.params.id), {
+        firstName: req.body.firstName,
+        lastName: req.body.lastName,
+        phone: req.body.phone,
+      });
+      sendSuccess(res, "User updated", user);
+    } catch (err) { next(err); }
+  }
+
   async banUser(req: Request, res: Response, next: NextFunction) {
     try {
       const user = await adminService.banUser(String(req.params.id));

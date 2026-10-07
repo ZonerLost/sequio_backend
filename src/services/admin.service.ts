@@ -429,6 +429,37 @@ export class AdminService {
     return { signedUrl, expiresInSeconds: 900 };
   }
 
+  /**
+   * Edits a user's profile as an administrator — for moderation, such as an abusive display name.
+   *
+   * **Email is deliberately not editable here.** It is the login identity, it carries a uniqueness
+   * constraint and a verification state, and changing it for someone would silently lock them out
+   * of their own account while leaving `isEmailVerified` claiming the new address was confirmed.
+   * A user changes their own email through the normal flow, with verification.
+   *
+   * Only the fields given are touched, so a form that sends one field cannot blank the others.
+   */
+  async updateUserProfile(
+    userId: string,
+    patch: { firstName?: string; lastName?: string; phone?: string }
+  ) {
+    const update: Record<string, unknown> = {};
+    if (patch.firstName !== undefined) update.firstName = patch.firstName.trim();
+    if (patch.lastName !== undefined) update.lastName = patch.lastName.trim();
+    if (patch.phone !== undefined) update.phone = patch.phone.trim();
+
+    if (Object.keys(update).length === 0) {
+      throw new AppError("Nothing to update", HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const user = await UserModel.findByIdAndUpdate(userId, update, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+    return user;
+  }
+
   async verifyIdentity(userId: string, action: "approve" | "reject") {
     const user = await UserModel.findByIdAndUpdate(
       userId,

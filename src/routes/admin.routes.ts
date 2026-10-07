@@ -28,6 +28,14 @@ const cancelBookingSchema = Joi.object({
   reason: Joi.string().trim().min(3).max(500).required(),
 });
 
+const userProfileSchema = Joi.object({
+  firstName: Joi.string().trim().min(1).max(60).optional(),
+  lastName: Joi.string().trim().min(1).max(60).optional(),
+  phone: Joi.string().trim().allow("").max(32).optional(),
+  // Email is not accepted on purpose — see updateUserProfile. stripUnknown means a client sending
+  // one gets a clear "nothing to update" rather than a silent partial save.
+}).or("firstName", "lastName", "phone");
+
 const roleSchema = Joi.object({
   role: Joi.string().valid("user", "admin").required(),
 });
@@ -70,6 +78,7 @@ router.get("/notifications", ...adminGuard, validate(notificationQuerySchema, "q
 router.get("/users", ...adminGuard, validate(querySchema, "query"), ctrl.getUsers.bind(ctrl));
 router.get("/users/:id", ...adminGuard, ctrl.getUserById.bind(ctrl));
 router.get("/users/:id/identity-doc", ...adminGuard, ctrl.getIdentityDoc.bind(ctrl));
+router.put("/users/:id", ...adminGuard, validate(userProfileSchema), ctrl.updateUserProfile.bind(ctrl));
 router.put("/users/:id/role", ...adminGuard, validate(roleSchema), ctrl.updateUserRole.bind(ctrl));
 router.put("/users/:id/ban", ...adminGuard, ctrl.banUser.bind(ctrl));
 router.put("/users/:id/unban", ...adminGuard, ctrl.unbanUser.bind(ctrl));
