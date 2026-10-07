@@ -7,6 +7,8 @@ import { EcoImpactModel } from "../models/eco.model";
 import { ReviewModel } from "../models/review.model";
 import { getId } from "../helpers/id.helper";
 import { notifyBookingCancelledByAdmin } from "../helpers/notification.triggers";
+import { DisputeModel } from "../models/dispute.model";
+import { ConversationModel, MessageModel } from "../models/chat.model";
 import { PlatformSettingsModel } from "../models/platform-settings.model";
 import {
   NotificationModel,
@@ -277,6 +279,56 @@ export class AdminService {
       series,
       listings: { boosted: boostedListings, nonBoosted: nonBoostedListings, total: totalListings },
       range: { start: start.toISOString(), end: end.toISOString() },
+    };
+  }
+
+  /**
+   * The conversation between the two parties to a dispute, for an administrator to read.
+   *
+   * A dispute has no messages of its own — the model holds a description and evidence URLs. What
+   * exists is the chat between the reporter and the person reported, which is the record anyone
+   * adjudicating actually needs. The panel previously hardcoded an empty list and so always said
+   * "No messages", whatever the two had said to each other.
+   *
+   * Read-only, deliberately. The panel called this "moderate messages", but deleting a participant's
+   * message is a different power from reading the thread, it is not something the chat service
+   * permits a third party to do, and an adjudicator altering the evidence they are weighing is not a
+   * feature worth inventing.
+   */
+  async getDisputeMessages(disputeId: string, params: { limit?: number } = {}) {
+    const limit = Math.min(200, Math.max(1, Number(params.limit) || 100));
+
+    const dispute = await DisputeModel.findById(disputeId)
+      .select("reportedBy reportedAgainst booking")
+      .lean();
+    if (!dispute) throw new AppError("Dispute not found", HTTP_STATUS.NOT_FOUND);
+
+    const a = getId(dispute.reportedBy);
+    const b = getId(dispute.reportedAgainst);
+
+    // The conversation is found by its two participants, not created: an admin opening a dispute
+    // must never bring a conversation into existence that the parties never had.
+    const conversation = await ConversationModel.findOne({
+      participants: { $all: [a, b] },
+    })
+      .select("_id participants")
+      .lean();
+
+    if (!conversation) {
+      return { conversationId: null, messages: [], participants: { reportedBy: a, reportedAgainst: b } };
+    }
+
+    const messages = await MessageModel.find({ conversation: conversation._id })
+      .sort({ createdAt: 1 })
+      .limit(limit)
+      .populate("sender", "firstName lastName email")
+      .lean();
+
+    return {
+      conversationId: String(conversation._id),
+      participants: { reportedBy: a, reportedAgainst: b },
+      messages,
+      truncated: messages.length === limit,
     };
   }
 

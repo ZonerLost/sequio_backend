@@ -39,6 +39,15 @@ export class AdminController {
     } catch (err) { next(err); }
   }
 
+  async getDisputeMessages(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await adminService.getDisputeMessages(String(req.params.id), {
+        limit: Number(req.query.limit) || 100,
+      });
+      sendSuccess(res, "Dispute messages retrieved", result);
+    } catch (err) { next(err); }
+  }
+
   async getNotificationSettings(_req: Request, res: Response, next: NextFunction) {
     try {
       const result = await adminService.getNotificationSettings();

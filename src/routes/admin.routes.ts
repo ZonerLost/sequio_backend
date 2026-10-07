@@ -67,6 +67,9 @@ const querySchema = Joi.object({
 // ── Stats ─────────────────────────────────────────────────
 router.get("/stats", ...adminGuard, validate(statsQuerySchema, "query"), ctrl.getPlatformStats.bind(ctrl));
 
+// ── Disputes ──────────────────────────────────────────────
+router.get("/disputes/:id/messages", ...adminGuard, ctrl.getDisputeMessages.bind(ctrl));
+
 // ── Notifications ─────────────────────────────────────────
 // "settings" before ":id"-style routes is not an issue here (there is no /notifications/:id), but
 // the order is kept deliberate in case one is added.
