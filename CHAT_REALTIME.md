@@ -3,7 +3,8 @@
 Everything an app needs for messaging: live messages, sent/delivered/seen ticks, typing, online and last-seen.
 
 - **API base:** `https://au2p3vkiqi.us-east-1.awsapprunner.com/api/v1`
-- **Socket:** same origin (socket.io v4), no path option needed
+- **Socket:** `https://d2gl4lhyqlw2e6.cloudfront.net` (socket.io v4, no path option needed) —
+  **a different origin from REST**, and deliberately so; see the note below
 - **Auth:** the access token from login, on both REST and socket
 - **Swagger:** `/api-docs` (the "Chat" tag repeats the event list)
 
@@ -25,10 +26,9 @@ Send the access token as `auth.token` (or an `Authorization: Bearer …` header)
 ```js
 import { io } from "socket.io-client";
 
-const socket = io("https://au2p3vkiqi.us-east-1.awsapprunner.com", {
+const socket = io("https://d2gl4lhyqlw2e6.cloudfront.net", {
   auth: { token: accessToken },
-  transports: ["polling"], // the host rejects WebSocket upgrades — see the note below
-  upgrade: false,
+  // No transports option: this origin accepts WebSocket, so let socket.io negotiate.
 });
 
 socket.on("connect_error", async (err) => {
@@ -43,18 +43,27 @@ socket.on("connect_error", async (err) => {
 Dart/Flutter uses the same events via `socket_io_client`:
 
 ```dart
-final socket = IO.io(origin, IO.OptionBuilder()
-    .setTransports(['polling'])          // not ['websocket'] — see the note below
-    .setAuth({'token': accessToken})
+final socket = IO.io(socketOrigin, IO.OptionBuilder()
+    .setAuth({'token': accessToken})     // no setTransports — let it negotiate
     .build());
 ```
 
-> **Use the polling transport.** The API runs on AWS App Runner, which answers a WebSocket
-> upgrade with **403**. socket.io then runs over HTTP long-polling, which is what the live
-> checks were run against — messages, receipts and presence all work, with about a second of
-> latency at worst. Forcing `transports: ['websocket']` fails to connect at all. If the API
-> ever moves to a host that allows WebSockets, drop these two options and the client upgrades
-> on its own.
+> **The socket origin is not the REST origin.** REST stays on App Runner, which answers a
+> WebSocket upgrade with **403** at its proxy, before the server sees it — and `socket_io_client`
+> on Android and iOS only ever speaks WebSocket, ignoring `transports` entirely, so against
+> App Runner a mobile socket could not connect at all. That is why mobile chat was on REST
+> polling for weeks.
+>
+> Sockets now go to a CloudFront distribution in front of the ECS/ALB service, which carries
+> WebSocket natively and serves a trusted certificate. Verified 2026-10-07: health 200 over TLS,
+> handshake fine, upgrade answering **101 Switching Protocols**. Both origins serve the same
+> backend, so the same access token works on either.
+>
+> Do **not** force `transports`. Let socket.io negotiate — it will use WebSocket where it can and
+> fall back by itself where it cannot.
+>
+> `d2gl4lhyqlw2e6.cloudfront.net` is a stopgap until the API has its own domain and certificate.
+> Read it from config rather than hardcoding it, and a move costs you nothing.
 
 On connect the server puts the socket into a room per conversation the user belongs to, so **messages arrive without any join call**. The token is checked at connect time, and banned or deactivated accounts are refused.
 
