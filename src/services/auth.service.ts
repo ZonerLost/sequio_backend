@@ -14,6 +14,7 @@ import {
 } from "../helpers/email.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS, CONSTANTS } from "../config/constants";
+import { logger } from "../config/logger";
 import { ENV } from "../config/env";
 import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
@@ -183,6 +184,7 @@ export class AuthService {
     if (!user)
       return { message: "If this email exists, a reset code has been sent" };
 
+    // otpRepo.create retires any code already outstanding, so only the newest one works.
     const otp = generateOTP();
     await otpRepo.create({
       userId: user._id,
@@ -192,19 +194,25 @@ export class AuthService {
       expiresAt: getOTPExpiry(ENV.OTP_EXPIRES_IN_MINUTES),
     });
 
-    console.log(`\n=============================`);
-    console.log(`🔑 Password Reset OTP for ${email}: ${otp}`);
-    console.log(`=============================\n`);
-
-    if (ENV.NODE_ENV !== "development") {
+    if (ENV.NODE_ENV === "development") {
+      // Local only, and never through the logger: a password-reset code is a credential. This used
+      // to print unconditionally, which put a live code for every account into CloudWatch — anyone
+      // who could read the logs could take over any account.
+      console.log(`🔑 [dev] password reset code for ${email}: ${otp}`);
+    } else {
       try {
         await sendEmail(
           email,
-          "Password Reset Code - Larissa",
+          "Password Reset Code - Atussa",
           resetPasswordEmailTemplate(otp, user.firstName)
         );
       } catch (emailError) {
-        console.error(`Password reset email failed for ${email}:`, emailError);
+        // The response stays deliberately vague either way, so this log is the only signal that
+        // sending is broken. Through the logger, so it is searchable, and without the code in it.
+        logger.error("Password reset email failed", {
+          email,
+          message: (emailError as Error).message,
+        });
       }
     }
 
@@ -213,15 +221,25 @@ export class AuthService {
 
   async resetPassword(email: string, otp: string, newPassword: string) {
     const user = await userRepo.findByEmail(email);
-    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+
+    /**
+     * One message for both "no such account" and "wrong code".
+     *
+     * This used to answer "User not found" with a 404 for an unknown email, which told an attacker
+     * exactly which addresses have accounts — and made the careful wording in forgotPassword
+     * pointless, since the same question could be asked here and answered honestly.
+     */
+    const refuse = () =>
+      new AppError("That code is invalid or has expired", HTTP_STATUS.BAD_REQUEST);
+
+    if (!user) throw refuse();
 
     const otpRecord = await otpRepo.findValid(
       user._id.toString(),
       otp,
       "password_reset"
     );
-    if (!otpRecord)
-      throw new AppError("Invalid or expired OTP", HTTP_STATUS.BAD_REQUEST);
+    if (!otpRecord) throw refuse();
 
     await otpRepo.markUsed(otpRecord._id.toString());
     const hashed = await bcrypt.hash(newPassword, CONSTANTS.BCRYPT_ROUNDS);
