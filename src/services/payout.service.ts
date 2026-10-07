@@ -185,8 +185,13 @@ export class PayoutService {
           },
           defaults: {
             currency: ENV.STRIPE_CONNECT_ACCOUNT_COUNTRY === "ca" ? "cad" : "usd",
-            // The platform collects the application fee and carries losses — the only combination
-            // this integration accepts, and it requires the Connect platform profile to be completed.
+            // The platform collects the application fee and carries losses. This requires the
+            // Connect platform profile to declare platform liability for negative balances.
+            //
+            // The alternative, losses_collector "stripe", does work — but only on API version
+            // 2026-09-30.preview, and Stripe then requires embedded onboarding components instead of
+            // the hosted link flow the app already uses, plus a preview API version in production.
+            // Verified both ways against the live account on 2026-10-07.
             responsibilities: { fees_collector: "application", losses_collector: "application" },
           },
           metadata: { userId },
