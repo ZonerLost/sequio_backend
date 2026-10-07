@@ -16,9 +16,18 @@ const API = "https://api.stripe.com/v1";
 const API_V2 = "https://api.stripe.com/v2";
 // Pinned: an account's default API version can change under us, which would silently alter payloads.
 const STRIPE_VERSION = "2024-06-20";
-// Accounts v2 lives behind a dated release. Verified accepted by this account; the companion
-// ".preview" alias works too, but a fixed name cannot drift.
-const STRIPE_VERSION_V2 = "2026-09-30.endive";
+/**
+ * Accounts v2 lives behind a dated release, and which one depends on the liability model:
+ *
+ * - Stripe-carried losses with an Express dashboard is in public preview, so it needs ".preview".
+ *   ".endive" rejects that combination with "This account configuration is not supported".
+ * - Platform-carried losses works on the stable ".endive", but only once the Connect platform
+ *   profile declares that liability.
+ *
+ * Both verified against the live account on 2026-10-07.
+ */
+const STRIPE_VERSION_V2 =
+  ENV.STRIPE_CONNECT_LOSSES_COLLECTOR === "stripe" ? "2026-09-30.preview" : "2026-09-30.endive";
 const TIMEOUT_MS = 20_000;
 /** Stripe's own recommendation: reject signatures older than five minutes (replay protection). */
 const SIGNATURE_TOLERANCE_SECONDS = 300;

@@ -185,14 +185,19 @@ export class PayoutService {
           },
           defaults: {
             currency: ENV.STRIPE_CONNECT_ACCOUNT_COUNTRY === "ca" ? "cad" : "usd",
-            // The platform collects the application fee and carries losses. This requires the
-            // Connect platform profile to declare platform liability for negative balances.
+            // The platform always collects the application fee — that is the commission. Who carries
+            // an unrecoverable negative balance is configurable, and defaults to Stripe: making the
+            // platform liable obliges Atussa to underwrite and monitor seller risk, and requires an
+            // acknowledgement in the Connect platform profile before accounts can be created at all.
             //
-            // The alternative, losses_collector "stripe", does work — but only on API version
-            // 2026-09-30.preview, and Stripe then requires embedded onboarding components instead of
-            // the hosted link flow the app already uses, plus a preview API version in production.
-            // Verified both ways against the live account on 2026-10-07.
-            responsibilities: { fees_collector: "application", losses_collector: "application" },
+            // Stripe-carried losses was verified end to end on 2026-10-07 — creation, the hosted
+            // onboarding link the app already uses, and v1 status reads all work. The embedded-
+            // components requirement in Stripe's docs applies to accounts with no Stripe-hosted
+            // dashboard; Express is Stripe-hosted, so it does not apply here.
+            responsibilities: {
+              fees_collector: "application",
+              losses_collector: ENV.STRIPE_CONNECT_LOSSES_COLLECTOR,
+            },
           },
           metadata: { userId },
         },

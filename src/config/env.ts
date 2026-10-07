@@ -37,6 +37,12 @@ export const ENV = {
   // Quebec, so "ca" — but the platform's own Stripe account is US-registered, and whether a US
   // platform may create CA accounts is unresolved, so this is configurable rather than compiled in.
   STRIPE_CONNECT_ACCOUNT_COUNTRY: (process.env.STRIPE_CONNECT_ACCOUNT_COUNTRY || "ca").toLowerCase(),
+  // Who absorbs an unrecoverable negative balance on a connected account: "stripe" or "application"
+  // (this platform). "stripe" is the default because the alternative obliges Atussa to underwrite,
+  // monitor and remediate seller risk, and to answer payment and risk enquiries — a real operations
+  // commitment, and one Stripe itself steers new platforms away from.
+  STRIPE_CONNECT_LOSSES_COLLECTOR:
+    process.env.STRIPE_CONNECT_LOSSES_COLLECTOR === "application" ? "application" : "stripe",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
   // Where Stripe sends the owner back after hosted onboarding. Deep links in the mobile app.
   STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || "",
