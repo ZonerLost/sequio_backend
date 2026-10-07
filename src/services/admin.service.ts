@@ -52,7 +52,38 @@ export class AdminService {
     return user;
   }
 
-  async updateUserRole(userId: string, role: "user" | "admin") {
+  /**
+   * Grants or revokes admin access.
+   *
+   * `actorId` is required so the two lockout cases can be refused. Both of them end the same way —
+   * nobody can reach the admin panel and the only fix is editing the database by hand:
+   *
+   *   1. An admin demoting themselves. Easy to do by accident in a list of users.
+   *   2. Demoting the last remaining admin, whoever does it.
+   *
+   * Promotion is never blocked, and demoting someone else while another admin remains is fine.
+   */
+  async updateUserRole(userId: string, role: "user" | "admin", actorId: string) {
+    if (role === "user") {
+      if (actorId === userId) {
+        throw new AppError(
+          "You cannot remove your own admin access. Ask another admin to do it.",
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+      const target = await UserModel.findById(userId).select("role").lean();
+      if (!target) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+      if (target.role === "admin") {
+        const admins = await UserModel.countDocuments({ role: "admin" });
+        if (admins <= 1) {
+          throw new AppError(
+            "This is the last admin account. Promote someone else first.",
+            HTTP_STATUS.BAD_REQUEST
+          );
+        }
+      }
+    }
+
     const user = await UserModel.findByIdAndUpdate(
       userId,
       { role },
