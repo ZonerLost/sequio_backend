@@ -8,3 +8,7 @@ coverage/
 # Local analysis docs (kept out of the repo)
 CLAUDE.md
 docs-analysis/
+
+# Operational scripts (deploy, Stripe Connect probes). Untracked for now because deploy-backend.sh
+# carries the AWS account id and the App Runner ARN — delete this line to put them in the repo.
+scripts/
