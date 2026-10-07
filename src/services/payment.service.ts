@@ -3,6 +3,7 @@ import { BookingRepository } from "../repository/booking.repository";
 import { UserRepository } from "../repository/user.repository";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
+import { PRICING, ATUSSA_FEE_EXPLAINER } from "../helpers/pricing.helper";
 import { ENV } from "../config/env";
 import { PaymentMethod } from "../models/payment.model";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -42,6 +43,16 @@ export class PaymentService {
       currency: "CAD",
       merchantCountryCode: "CA",
       mode: ENV.STRIPE_SECRET_KEY.startsWith("sk_live_") ? "live" : "test",
+      // The rates, so a client can state them without hardcoding a second copy. The admin panel
+      // showed an editable "platform fee 5%" from a literal in its own source, which was both
+      // unsaveable and wrong. Served from the one place the numbers actually live.
+      pricing: {
+        ownerCommissionPercent: PRICING.OWNER_COMMISSION_PERCENT,
+        renterFeePercent: PRICING.RENTER_FEE_PERCENT,
+        renterFeeMinimum: PRICING.RENTER_FEE_MINIMUM,
+        taxes: PRICING.TAXES.map((t) => ({ code: t.code, label: t.label, rate: t.rate })),
+        atussaFeeExplainer: ATUSSA_FEE_EXPLAINER,
+      },
     };
   }
 
