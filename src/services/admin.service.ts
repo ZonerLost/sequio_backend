@@ -6,6 +6,7 @@ import { PaymentModel } from "../models/payment.model";
 import { EcoImpactModel } from "../models/eco.model";
 import { ReviewModel } from "../models/review.model";
 import { getId } from "../helpers/id.helper";
+import { notifyBookingCancelledByAdmin } from "../helpers/notification.triggers";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -91,6 +92,185 @@ export class AdminService {
     ).select("-password");
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
     return user;
+  }
+
+  /**
+   * Cancels a booking as an administrator, for abuse, fraud or a dispute.
+   *
+   * Deliberately narrow. There is no admin approve or reject, because whether to rent out an item is
+   * the owner's decision and an administrator standing in for them would be acting on someone else's
+   * behalf without their knowledge. Cancelling is different: it only ever stops something.
+   *
+   * A reason is required, and both parties are notified with it — an unexplained cancellation from a
+   * party you never dealt with is worse than none.
+   *
+   * Money is NOT touched here. A paid booking keeps its `paymentStatus: "paid"` and the refund stays
+   * a separate, deliberate act through `refundPayment`, because the refund policy is a business
+   * decision and quietly moving money as a side effect of a status change would be wrong either way.
+   * The response says whether a refund is outstanding so the panel can prompt for one.
+   */
+  async cancelBooking(bookingId: string, reason: string, actorId: string) {
+    const trimmed = String(reason || "").trim();
+    if (trimmed.length < 3) {
+      throw new AppError("A cancellation reason is required", HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const booking = await BookingModel.findById(bookingId);
+    if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
+    if (!["pending", "accepted", "active"].includes(booking.status)) {
+      throw new AppError(
+        `A ${booking.status} booking cannot be cancelled`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const updated = await BookingModel.findByIdAndUpdate(
+      bookingId,
+      {
+        status: "cancelled",
+        cancelReason: `[admin] ${trimmed}`,
+        cancelledAt: new Date(),
+        cancelledByAdmin: actorId,
+      },
+      { new: true }
+    );
+
+    const item = await ItemModel.findById(getId(booking.item)).select("title").lean();
+    notifyBookingCancelledByAdmin(
+      [getId(booking.renter), getId(booking.owner)],
+      item?.title ?? "your item",
+      bookingId,
+      trimmed
+    ).catch(() => {});
+
+    return {
+      booking: updated,
+      // The panel uses this to decide whether to offer a refund next.
+      refundOutstanding: booking.paymentStatus === "paid",
+    };
+  }
+
+  /**
+   * Daily booking counts for the admin charts.
+   *
+   * One call returns every series the page needs. The alternative the panel had was nine components
+   * each fetching separately — and what they fetched was a locally generated row of zeros, so the
+   * charts showed a flat line and a "Total 0" caption no matter what the database held.
+   *
+   * Buckets are by `createdAt` in UTC. Days with no bookings are filled in with zeros rather than
+   * omitted, because a chart that silently skips empty days misreads as continuous activity.
+   */
+  async getBookingSeries(range: { start?: Date; end?: Date } = {}) {
+    const end = range.end ? new Date(range.end) : new Date();
+    const start = range.start
+      ? new Date(range.start)
+      : new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    if (end < start) {
+      throw new AppError("end must be on or after start", HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const days = Math.floor((end.getTime() - start.getTime()) / DAY_MS) + 1;
+    if (days > 370) {
+      throw new AppError("Range is too long; request a year or less", HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const rows = await BookingModel.aggregate([
+      { $match: { createdAt: { $gte: start, $lte: end } } },
+      {
+        $lookup: {
+          from: "items",
+          localField: "item",
+          foreignField: "_id",
+          as: "itemDoc",
+          pipeline: [{ $project: { isBoosted: 1, isFeatured: 1 } }],
+        },
+      },
+      {
+        $addFields: {
+          day: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" } },
+          onBoosted: {
+            $let: {
+              vars: { it: { $arrayElemAt: ["$itemDoc", 0] } },
+              in: {
+                $or: [
+                  { $eq: ["$$it.isBoosted", true] },
+                  { $eq: ["$$it.isFeatured", true] },
+                ],
+              },
+            },
+          },
+          // Only meaningful where the owner actually responded.
+          responseMs: {
+            $cond: [
+              { $and: ["$acceptedAt", "$createdAt"] },
+              { $subtract: ["$acceptedAt", "$createdAt"] },
+              null,
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$day",
+          total: { $sum: 1 },
+          requests: { $sum: { $cond: [{ $eq: ["$bookingType", "request"] }, 1, 0] } },
+          instant: { $sum: { $cond: [{ $eq: ["$bookingType", "instant"] }, 1, 0] } },
+          accepted: {
+            $sum: {
+              $cond: [{ $in: ["$status", ["accepted", "active", "completed"]] }, 1, 0],
+            },
+          },
+          notAccepted: {
+            $sum: { $cond: [{ $in: ["$status", ["declined", "cancelled"]] }, 1, 0] },
+          },
+          boosted: { $sum: { $cond: ["$onBoosted", 1, 0] } },
+          nonBoosted: { $sum: { $cond: ["$onBoosted", 0, 1] } },
+          responseMsTotal: { $sum: { $ifNull: ["$responseMs", 0] } },
+          responded: { $sum: { $cond: [{ $ne: ["$responseMs", null] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    const byDay = new Map(rows.map((r) => [r._id, r]));
+
+    // How many listings exist in each bucket. Used to turn boosted/non-boosted booking counts into
+    // "bookings per listing", which is what those charts claim to show. This is the count as it
+    // stands now, not as it stood on each historical day — the item model keeps no boost history, so
+    // a day-accurate figure is not available. Stated here rather than silently implied.
+    const [boostedListings, totalListings] = await Promise.all([
+      ItemModel.countDocuments({ $or: [{ isBoosted: true }, { isFeatured: true }] }),
+      ItemModel.countDocuments({}),
+    ]);
+    const nonBoostedListings = Math.max(0, totalListings - boostedListings);
+
+    const series = Array.from({ length: days }, (_, i) => {
+      const d = new Date(start.getTime() + i * DAY_MS);
+      const key = d.toISOString().slice(0, 10);
+      const r = byDay.get(key);
+      const boosted = r?.boosted ?? 0;
+      const nonBoosted = r?.nonBoosted ?? 0;
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      return {
+        date: key,
+        total: r?.total ?? 0,
+        requests: r?.requests ?? 0,
+        instant: r?.instant ?? 0,
+        accepted: r?.accepted ?? 0,
+        notAccepted: r?.notAccepted ?? 0,
+        boosted,
+        nonBoosted,
+        avgResponseMs: r?.responded ? Math.round(r.responseMsTotal / r.responded) : 0,
+        avgPerBoostedListing: boostedListings ? round2(boosted / boostedListings) : 0,
+        avgPerNonBoostedListing: nonBoostedListings ? round2(nonBoosted / nonBoostedListings) : 0,
+      };
+    });
+
+    return {
+      series,
+      listings: { boosted: boostedListings, nonBoosted: nonBoostedListings, total: totalListings },
+      range: { start: start.toISOString(), end: end.toISOString() },
+    };
   }
 
   async banUser(userId: string) {

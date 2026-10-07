@@ -82,6 +82,8 @@ export interface IBooking extends Document {
   cancelReason?: string;
   acceptedAt?: Date;
   cancelledAt?: Date;
+  /** Set only when an administrator cancelled it, so the audit trail survives. */
+  cancelledByAdmin?: mongoose.Types.ObjectId;
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -174,6 +176,8 @@ const BookingSchema = new Schema<IBooking>(
     cancelReason: String,
     acceptedAt: Date,
     cancelledAt: Date,
+    // Without this on the schema, strict mode silently drops it and the audit trail is lost.
+    cancelledByAdmin: { type: Schema.Types.ObjectId, ref: "User" },
     completedAt: Date,
   },
   { timestamps: true }

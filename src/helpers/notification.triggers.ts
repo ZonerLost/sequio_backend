@@ -62,6 +62,31 @@ export async function notifyBookingCancelled(
   });
 }
 
+/**
+ * Called when an administrator cancels a booking.
+ *
+ * Both parties are told, and the reason is included: a cancellation nobody asked for is confusing
+ * enough without it being unexplained, and the renter needs to know a booking they paid for is off.
+ */
+export async function notifyBookingCancelledByAdmin(
+  userIds: string[],
+  itemTitle: string,
+  bookingId: string,
+  reason: string
+): Promise<void> {
+  await Promise.all(
+    userIds.filter(Boolean).map((userId) =>
+      notificationService.send({
+        userId,
+        type: "booking_cancelled",
+        title: "Booking Cancelled by Support",
+        body: `The booking for "${itemTitle}" was cancelled by Atussa support: ${reason}`,
+        data: { bookingId, screen: "booking_detail" },
+      })
+    )
+  );
+}
+
 // Called after booking is completed
 export async function notifyBookingCompleted(
   renterId: string,

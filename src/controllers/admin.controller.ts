@@ -39,6 +39,27 @@ export class AdminController {
     } catch (err) { next(err); }
   }
 
+  async getBookingSeries(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await adminService.getBookingSeries({
+        start: req.query.start ? new Date(String(req.query.start)) : undefined,
+        end: req.query.end ? new Date(String(req.query.end)) : undefined,
+      });
+      sendSuccess(res, "Booking series retrieved", result);
+    } catch (err) { next(err); }
+  }
+
+  async cancelBooking(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await adminService.cancelBooking(
+        String(req.params.id),
+        String(req.body.reason ?? ""),
+        String(req.user?.userId ?? "")
+      );
+      sendSuccess(res, "Booking cancelled", result);
+    } catch (err) { next(err); }
+  }
+
   async banUser(req: Request, res: Response, next: NextFunction) {
     try {
       const user = await adminService.banUser(String(req.params.id));

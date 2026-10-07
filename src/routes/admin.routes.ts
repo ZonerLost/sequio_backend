@@ -9,6 +9,11 @@ const ctrl = new AdminController();
 
 const adminGuard = [authenticate, authorize("admin")];
 
+const cancelBookingSchema = Joi.object({
+  // Required, and shown to both parties, so it has to be something a person can read.
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+
 const roleSchema = Joi.object({
   role: Joi.string().valid("user", "admin").required(),
 });
@@ -57,7 +62,10 @@ router.put("/items/:id/deactivate", ...adminGuard, ctrl.deactivateItem.bind(ctrl
 
 // ── Bookings ──────────────────────────────────────────────
 router.get("/bookings", ...adminGuard, validate(querySchema, "query"), ctrl.getBookings.bind(ctrl));
+// Before /bookings/:id, or "series" is read as an id.
+router.get("/bookings/series", ...adminGuard, validate(statsQuerySchema, "query"), ctrl.getBookingSeries.bind(ctrl));
 router.get("/bookings/:id", ...adminGuard, ctrl.getBookingById.bind(ctrl));
+router.put("/bookings/:id/cancel", ...adminGuard, validate(cancelBookingSchema), ctrl.cancelBooking.bind(ctrl));
 
 // ── Payments ──────────────────────────────────────────────
 router.get("/payments", ...adminGuard, validate(querySchema, "query"), ctrl.getPayments.bind(ctrl));
