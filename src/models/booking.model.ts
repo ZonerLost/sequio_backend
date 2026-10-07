@@ -75,7 +75,7 @@ export interface IBooking extends Document {
    * Written by the Stripe webhook, which is authoritative, and by the record-payment path. Kept here
    * rather than derived from the Payment collection so listing bookings stays one query.
    */
-  paymentStatus: "unpaid" | "paid" | "failed";
+  paymentStatus: "unpaid" | "paid" | "failed" | "refunded";
   preRentalPhotos: string[];
   postRentalPhotos: string[];
   declineReason?: string;
@@ -165,7 +165,7 @@ const BookingSchema = new Schema<IBooking>(
     // paymentStatus as "unpaid" rather than assuming the default was applied retroactively.
     paymentStatus: {
       type: String,
-      enum: ["unpaid", "paid", "failed"],
+      enum: ["unpaid", "paid", "failed", "refunded"],
       default: "unpaid",
     },
     preRentalPhotos: [{ type: String }],

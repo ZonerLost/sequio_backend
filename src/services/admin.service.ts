@@ -5,6 +5,7 @@ import { BookingModel } from "../models/booking.model";
 import { PaymentModel } from "../models/payment.model";
 import { EcoImpactModel } from "../models/eco.model";
 import { ReviewModel } from "../models/review.model";
+import { getId } from "../helpers/id.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -243,6 +244,12 @@ export class AdminService {
       },
       { new: true }
     );
+
+    // The booking carries payment state too, and leaving it on "paid" after the money went back
+    // would be worse than not having the field: a client would keep hiding Pay Now on a booking
+    // nobody has paid for. "refunded" is not "paid", so payment becomes possible again if the
+    // booking is still live.
+    await BookingModel.findByIdAndUpdate(getId(payment.booking), { paymentStatus: "refunded" });
 
     return updated;
   }
