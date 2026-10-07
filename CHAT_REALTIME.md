@@ -118,16 +118,26 @@ not need a resync on delete.
 
 | Event | Argument | Notes |
 |---|---|---|
-| `join_conversation` | `conversationId`, optional ack | Needed **only for typing**. Ack returns `{ ok: true }` or `{ ok: false, error }`; membership is checked server-side. |
-| `leave_conversation` | `conversationId` | when the chat screen closes |
+| `join_conversation` | `conversationId` **or** `{ conversationId }`, optional ack | Needed **only for typing**. Ack returns `{ ok: true }` or `{ ok: false, error }`; membership is checked server-side. |
+| `leave_conversation` | `conversationId` **or** `{ conversationId }` | when the chat screen closes |
 | `typing` / `stop_typing` | `{ conversationId }` | ignored unless you joined that conversation |
+| `typing` with a flag | `{ conversationId, isTyping }` | `isTyping: false` is treated as `stop_typing`, so one event with a flag works too |
 
 ```js
+// The id may be bare or wrapped — both are accepted, so you need not care which.
 socket.emit("join_conversation", conversationId, (res) => {
   if (!res.ok) console.warn(res.error); // not a participant
 });
 socket.emit("typing", { conversationId });
+socket.emit("stop_typing", { conversationId });          // or: typing with isTyping: false
 ```
+
+**Emit as soon as `connect` fires.** Handlers are attached before the server touches the database, so
+an event sent in the first milliseconds is not lost. This was not true until 2026-10-07: handlers went
+on after a Mongo round trip, and an immediate `join_conversation` could be dropped with no ack at all.
+
+**There is no `notification` event.** In-app notifications arrive as `conversation_updated` with
+`type: "notification"` — see the server-to-client table above. A listener on `notification` is silent.
 
 ---
 

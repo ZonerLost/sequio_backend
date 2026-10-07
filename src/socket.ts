@@ -106,12 +106,24 @@ async function onConnection(server: SocketServer, socket: Socket): Promise<void>
   const isFirstSocket = trackConnect(userId, socket.id);
   logger.info(`Socket connected: ${userId}`);
 
-  // personal room (user id) + every conversation this user belongs to
+  // personal room (user id)
   socket.join(userId);
+
+  /**
+   * Handlers go on BEFORE the first await, and that ordering is load-bearing.
+   *
+   * socket.io does not queue events for listeners that do not exist yet: anything the client emits
+   * while this function is waiting on Mongo is dropped silently. A client that emits
+   * `join_conversation` the instant it connects — the obvious thing to do — would get no ack at all,
+   * and a disconnect inside that same window would skip the handler that marks the user offline,
+   * leaving them online forever. Both were reproducible against Atlas, where the round trip below is
+   * tens to hundreds of milliseconds.
+   */
+  registerHandlers(server, socket, userId);
+
+  // Then join every conversation this user belongs to, so messages arrive without an explicit join.
   const conversationIds = await chatRepo.findConversationIdsForUser(userId);
   for (const id of conversationIds) socket.join(conversationRoom(id));
-
-  registerHandlers(server, socket, userId);
 
   if (isFirstSocket) {
     const lastSeenAt = await markOnline(userId);
@@ -123,9 +135,23 @@ async function onConnection(server: SocketServer, socket: Socket): Promise<void>
 function registerHandlers(server: SocketServer, socket: Socket, userId: string): void {
   type Ack = (result: { ok: boolean; error?: string }) => void;
 
+  /**
+   * The documented payload is the bare id, but a client wrapping it as { conversationId } is just as
+   * reasonable — and `String({...})` yields "[object Object]", which fails the membership check and
+   * leaves the client silently without typing indicators. Accept either rather than being right.
+   */
+  const conversationIdOf = (input: unknown): string => {
+    if (typeof input === "string") return input;
+    if (input && typeof input === "object") {
+      const wrapped = (input as { conversationId?: unknown }).conversationId;
+      if (typeof wrapped === "string") return wrapped;
+    }
+    return String(input ?? "");
+  };
+
   socket.on("join_conversation", (conversationId: unknown, ack?: Ack) => {
     void (async () => {
-      const id = String(conversationId ?? "");
+      const id = conversationIdOf(conversationId);
       // A room must never be joined on the client's say-so: check membership first.
       if (!(await chatRepo.isParticipant(id, userId))) {
         ack?.({ ok: false, error: "Not a participant of this conversation" });
@@ -140,18 +166,21 @@ function registerHandlers(server: SocketServer, socket: Socket, userId: string):
   });
 
   socket.on("leave_conversation", (conversationId: unknown) => {
-    socket.leave(conversationRoom(String(conversationId ?? "")));
+    socket.leave(conversationRoom(conversationIdOf(conversationId)));
   });
 
   for (const [incoming, outgoing] of [
     ["typing", "user_typing"],
     ["stop_typing", "user_stop_typing"],
   ] as const) {
-    socket.on(incoming, (data: { conversationId?: string } | undefined) => {
-      const conversationId = String(data?.conversationId ?? "");
+    socket.on(incoming, (data: { conversationId?: string; isTyping?: boolean } | undefined) => {
+      const conversationId = conversationIdOf(data);
       // Only broadcast into rooms this socket actually belongs to.
       if (!conversationId || !socket.rooms.has(conversationRoom(conversationId))) return;
-      socket.to(conversationRoom(conversationId)).emit(outgoing, { userId, conversationId });
+      // A client that models typing as one event with a flag would otherwise never stop the
+      // indicator, leaving "typing…" on screen forever. `isTyping: false` means stop.
+      const event = incoming === "typing" && data?.isTyping === false ? "user_stop_typing" : outgoing;
+      socket.to(conversationRoom(conversationId)).emit(event, { userId, conversationId });
     });
   }
 
