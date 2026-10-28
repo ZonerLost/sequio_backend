@@ -38,31 +38,46 @@
  *         name: sortBy
  *         schema:
  *           type: string
- *           enum: [dailyRate, createdAt, averageRating, totalRentals]
+ *           enum: [dailyRate, createdAt, averageRating, totalRentals, distance]
  *           default: createdAt
+ *         description: >
+ *           `distance` orders nearest first and needs `lat` and `lng`; without them it falls
+ *           back to `createdAt`. Unlike every other order it does NOT put boosted listings first.
  *       - in: query
  *         name: sortOrder
  *         schema:
  *           type: string
  *           enum: [asc, desc]
  *           default: desc
+ *         description: Ignored when sortBy=distance — nearest first is the only useful direction.
  *       - in: query
  *         name: lat
- *         schema: { type: number }
+ *         schema: { type: number, minimum: -90, maximum: 90 }
  *         example: 45.5017
- *         description: User latitude for location-based filtering
+ *         description: Centre of the radius search. Must be sent with lng or both are ignored.
  *       - in: query
  *         name: lng
- *         schema: { type: number }
+ *         schema: { type: number, minimum: -180, maximum: 180 }
  *         example: -73.5673
- *         description: User longitude for location-based filtering
+ *         description: Centre of the radius search. Must be sent with lat or both are ignored.
  *       - in: query
  *         name: radius
- *         schema: { type: number, default: 20 }
- *         description: Search radius in km (requires lat and lng)
+ *         schema: { type: number, default: 20, minimum: 1, maximum: 500 }
+ *         description: >
+ *           Search radius in **kilometres** (requires lat and lng). A true circle — listings are
+ *           measured by great-circle distance, not by a bounding box.
+ *       - in: query
+ *         name: distance
+ *         schema: { type: number, minimum: 1, maximum: 500 }
+ *         description: Alias for `radius`, in kilometres. `radius` wins when both are sent.
  *     responses:
  *       200:
- *         description: Items retrieved with pagination
+ *         description: >
+ *           Items retrieved with pagination. Every item carries `distanceKm` when lat/lng were
+ *           supplied — a number in kilometres, or null for a listing that has no coordinates.
+ *           `location.geoSource` says whether the point came from the client or was derived from
+ *           the address text, and `location.geoPrecision` how exact it is (`city`, `village`,
+ *           `address`, `building`) — draw a circle for a city, a pin for an address.
  *         content:
  *           application/json:
  *             schema:
@@ -98,18 +113,24 @@
  *     parameters:
  *       - in: query
  *         name: lat
- *         schema: { type: number }
+ *         schema: { type: number, minimum: -90, maximum: 90 }
  *         example: 45.5017
  *         description: User latitude (required for Near Me section)
  *       - in: query
  *         name: lng
- *         schema: { type: number }
+ *         schema: { type: number, minimum: -180, maximum: 180 }
  *         example: -73.5673
  *         description: User longitude (required for Near Me section)
  *       - in: query
  *         name: radius
- *         schema: { type: number, default: 20 }
- *         description: Search radius in km
+ *         schema: { type: number, default: 20, minimum: 1, maximum: 500 }
+ *         description: >
+ *           Search radius in **kilometres**. Near Me is ordered nearest first within it; all three
+ *           sections carry `distanceKm` once lat/lng are supplied.
+ *       - in: query
+ *         name: distance
+ *         schema: { type: number, minimum: 1, maximum: 500 }
+ *         description: Alias for `radius`, in kilometres. `radius` wins when both are sent.
  *       - in: query
  *         name: limit
  *         schema: { type: integer, default: 10, maximum: 20 }

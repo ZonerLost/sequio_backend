@@ -1,5 +1,11 @@
 import Joi from "joi";
 
+/**
+ * Kilometres. A cap exists so a client that mistakes the unit and sends metres gets a 400 naming
+ * the limit, instead of silently receiving the entire database as "nearby".
+ */
+const MAX_RADIUS_KM = 500;
+
 const deliveryPricingTierSchema = Joi.object({
   radius: Joi.number().min(1).required(),
   fee: Joi.number().min(0).required(),
@@ -126,17 +132,24 @@ export const itemQuerySchema = Joi.object({
   condition: Joi.string().valid("new", "like_new", "good", "fair").optional(),
   search: Joi.string().optional(),
   sortBy: Joi.string()
-    .valid("dailyRate", "createdAt", "averageRating", "totalRentals")
+    // "distance" needs lat+lng; the service falls back to createdAt without them.
+    .valid("dailyRate", "createdAt", "averageRating", "totalRentals", "distance")
     .default("createdAt"),
   sortOrder: Joi.string().valid("asc", "desc").default("desc"),
-  lat: Joi.number().optional(),
-  lng: Joi.number().optional(),
-  radius: Joi.number().min(1).default(20),
+  lat: Joi.number().min(-90).max(90).optional(),
+  lng: Joi.number().min(-180).max(180).optional(),
+  // Kilometres, and deliberately without a Joi default: the service owns the default so that
+  // "radius wins over distance" stays decidable, which a default would make impossible.
+  radius: Joi.number().min(1).max(MAX_RADIUS_KM).optional(),
+  // The app has always sent this name. stripUnknown used to discard it, so it silently did
+  // nothing; it is an alias for radius, in kilometres.
+  distance: Joi.number().min(1).max(MAX_RADIUS_KM).optional(),
 });
 
 export const feedQuerySchema = Joi.object({
-  lat: Joi.number().optional(),
-  lng: Joi.number().optional(),
-  radius: Joi.number().min(1).default(20),
+  lat: Joi.number().min(-90).max(90).optional(),
+  lng: Joi.number().min(-180).max(180).optional(),
+  radius: Joi.number().min(1).max(MAX_RADIUS_KM).optional(),
+  distance: Joi.number().min(1).max(MAX_RADIUS_KM).optional(),
   limit: Joi.number().integer().min(1).max(20).default(10),
 });

@@ -104,11 +104,12 @@ export class ItemController {
 
   async getFeed(req: Request, res: Response, next: NextFunction) {
     try {
-      const { lat, lng, radius, limit } = req.query;
+      const { lat, lng, radius, distance, limit } = req.query;
       const result = await itemService.getFeed({
         lat: lat ? Number(lat) : undefined,
         lng: lng ? Number(lng) : undefined,
-        radius: radius ? Number(radius) : 20,
+        // `distance` is the alias the app already sends; the service holds the default.
+        radius: radius ? Number(radius) : distance ? Number(distance) : undefined,
         limit: limit ? Number(limit) : 10,
       });
       sendSuccess(res, "Feed retrieved", result);

@@ -1,6 +1,9 @@
 # Postman collection
 
-`Atussa-API.postman_collection.json` covers **every one of the 115 routes** in `src/routes/` —
+`Atussa-API.postman_collection.json` covers **every one of the 115 routes** in `src/routes/` — plus
+one extra variant, *Browse listings nearby*, because `GET /items` behaves differently enough with a
+centre supplied (a radius circle, `distanceKm` on every row, `sortBy=distance`) to be worth its own
+request —
 it is generated from the route table, so nothing is missed — with a filled-in example body on
 every request that takes one. Each body was checked against the same Joi schema the route
 validates with, so a request either passes validation or the schema changed.

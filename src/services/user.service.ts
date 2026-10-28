@@ -6,6 +6,8 @@ import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
 import { sendEmail, otpEmailTemplate } from "../helpers/email.helper";
 import { generateOTP, getOTPExpiry } from "../helpers/otp.helper";
 import { AppError } from "../middleware/error.middleware";
+import { AddressParts } from "../helpers/geocoding.helper";
+import { resolveCoordinates, coordinateUpdate } from "../helpers/location.helper";
 import { HTTP_STATUS } from "../config/constants";
 import { ENV } from "../config/env";
 import { REPORT_REASONS, ReportReason } from "../models/user-report.model";
@@ -81,9 +83,15 @@ export class UserService {
       }
     }
 
+    // Set by the loop below when the caller sent a location; geocoded after it, so the merge can
+    // read the stored values the caller omitted.
+    let locationChanged: (AddressParts & { coordinates?: unknown }) | null = null;
+
     for (const [key, value] of Object.entries(data)) {
       if (key === "email") continue; // already handled above
       if (key === "location" && value && typeof value === "object") {
+        // Marked for geocoding after this loop, so the merge can read what is already stored.
+        locationChanged = value as AddressParts & { coordinates?: unknown };
         for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
           if (k === "coordinates" && v && typeof v === "object") {
             for (const [ck, cv] of Object.entries(v as Record<string, unknown>)) {
@@ -96,6 +104,27 @@ export class UserService {
       } else {
         update[key] = value;
       }
+    }
+
+    /**
+     * Give the profile coordinates too.
+     *
+     * The app needs these for its GPS-denied fallback: when a renter refuses location permission,
+     * it centres "near me" on their profile address instead. Exactly 1 of 37 users had a point, so
+     * that fallback would have been centred on nothing.
+     *
+     * Merged with what is stored, because a profile update often sends one field.
+     */
+    if (locationChanged) {
+      const current = await userRepo.findById(userId);
+      const resolved = await resolveCoordinates({
+        address: locationChanged.address ?? current?.location?.address ?? null,
+        city: locationChanged.city ?? current?.location?.city ?? null,
+        province: locationChanged.province ?? current?.location?.province ?? null,
+        country: locationChanged.country ?? current?.location?.country ?? null,
+        coordinates: locationChanged.coordinates,
+      });
+      if (resolved) Object.assign(update, coordinateUpdate(resolved.point, resolved));
     }
 
     const user = await userRepo.updateById(userId, update);

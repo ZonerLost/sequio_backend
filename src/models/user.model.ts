@@ -22,6 +22,35 @@ const UserSchema = new Schema<IUser>(
         lat: { type: Number },
         lng: { type: Number },
       },
+      /**
+       * The same point in GeoJSON, for indexed geospatial queries. Server-maintained: it is kept
+       * in step with `coordinates` by `applyCoordinates()` in location.helper.ts, and no Joi
+       * validator accepts it, so a client cannot write one that disagrees.
+       *
+       * Order is [lng, lat] — GeoJSON's order, the reverse of everything else here.
+       */
+      geo: {
+        type: {
+          type: String,
+          enum: ["Point"],
+        },
+        coordinates: {
+          type: [Number],
+        },
+      },
+      /**
+       * Where the point came from: `client` when the device or the owner supplied it, `geocoded`
+       * when the server derived it from the address text. Server-maintained, like `geo`.
+       */
+      geoSource: {
+        type: String,
+        enum: ["client", "geocoded"],
+      },
+      /**
+       * How exact the point is, in the geocoder's own words — `city`, `village`, `address`,
+       * `building`. A client should draw a circle for a city and a pin for an address.
+       */
+      geoPrecision: { type: String },
     },
     language: { type: String, default: "en" },
     authProvider: { type: String, enum: ["email", "google", "facebook"], default: "email" },

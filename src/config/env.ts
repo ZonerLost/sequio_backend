@@ -44,6 +44,21 @@ export const ENV = {
   STRIPE_CONNECT_LOSSES_COLLECTOR:
     process.env.STRIPE_CONNECT_LOSSES_COLLECTOR === "application" ? "application" : "stripe",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
+
+  /**
+   * Geocoding: turning an address into coordinates.
+   *
+   * Default provider is OpenStreetMap Nominatim, which needs no key and is the same data the
+   * Flutter app already renders its map tiles from. Its usage policy requires an identifying
+   * User-Agent and at most one request a second; both are honoured, and results are cached.
+   * Switch to mapbox or google (with GEOCODER_API_KEY) when volume justifies paying for it.
+   */
+  GEOCODER: (process.env.GEOCODER || "nominatim").toLowerCase(),
+  GEOCODER_API_KEY: process.env.GEOCODER_API_KEY || "",
+  // Nominatim blocks generic agents, correctly. Name the app and give a contact.
+  GEOCODER_USER_AGENT:
+    process.env.GEOCODER_USER_AGENT || "Atussa/1.0 (support@atussa.ca)",
+
   // Where Stripe sends the owner back after hosted onboarding. **Must be http(s)** — Stripe rejects
   // a custom scheme with "Not a valid URL", so an app deep link cannot go here. Leave unset to use
   // this server's own /payouts pages, or set a universal/app link once one exists.

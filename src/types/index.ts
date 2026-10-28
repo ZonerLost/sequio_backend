@@ -19,6 +19,12 @@ export interface IUser extends Document {
       lat: number;
       lng: number;
     };
+    /** Server-maintained GeoJSON mirror of `coordinates`, [lng, lat]. See location.helper.ts. */
+    geo?: { type: "Point"; coordinates: number[] };
+    /** Where the point came from. Server-maintained. */
+    geoSource?: "client" | "geocoded";
+    /** How exact the point is, in the geocoder's own words. Server-maintained. */
+    geoPrecision?: string;
   };
   language: string;
   authProvider: "email" | "google" | "facebook";
@@ -106,6 +112,12 @@ export interface IItem extends Document {
       lat: number;
       lng: number;
     };
+    /** Server-maintained GeoJSON mirror of `coordinates`, [lng, lat]. See location.helper.ts. */
+    geo?: { type: "Point"; coordinates: number[] };
+    /** Where the point came from. Server-maintained. */
+    geoSource?: "client" | "geocoded";
+    /** How exact the point is, in the geocoder's own words. Server-maintained. */
+    geoPrecision?: string;
   };
   availability: {
     isAvailable: boolean;

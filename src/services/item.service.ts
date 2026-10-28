@@ -2,6 +2,16 @@ import { ItemRepository } from "../repository/item.repository";
 import { UserRepository } from "../repository/user.repository";
 import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
 import { AppError } from "../middleware/error.middleware";
+import { AddressParts } from "../helpers/geocoding.helper";
+import {
+  resolveCoordinates,
+  coordinateFields,
+  coordinateUpdate,
+  withinRadius,
+  attachDistance,
+  isValidLatLng,
+  LatLng,
+} from "../helpers/location.helper";
 import { HTTP_STATUS, CONSTANTS } from "../config/constants";
 import { IItem, IWeeklySchedule, PaginationMeta } from "../types";
 import { CO2_BY_CATEGORY } from "../models/eco.model";
@@ -10,6 +20,38 @@ const userRepo = new UserRepository();
 
 const BOOST_DURATION_DAYS = 7;
 const BOOST_PRICE_CAD = 9.99;
+
+/** Radius used when a caller gives a centre but no distance. Kilometres, like every radius here. */
+const DEFAULT_RADIUS_KM = 20;
+
+/**
+ * The centre of a radius search, or null when the caller did not give a usable one.
+ *
+ * A radius with no centre is meaningless, so it is ignored rather than guessed at — and 0,0 is
+ * rejected by isValidLatLng, because an uninitialised device location must not quietly return the
+ * listings nearest the Gulf of Guinea.
+ */
+function centreOf(lat: unknown, lng: unknown): LatLng | null {
+  if (lat === undefined || lat === null || lat === "" || lng === undefined || lng === null || lng === "")
+    return null;
+  const point = { lat: Number(lat), lng: Number(lng) };
+  return isValidLatLng(point) ? point : null;
+}
+
+/**
+ * The same keyword search as `$text`, expressed as a regex.
+ *
+ * Only used when a search is combined with `sortBy=distance`: that path goes through `$geoNear`,
+ * which must be an aggregation's first stage and refuses `$text` in its `query`. A regex is the
+ * poorer search — no stemming, no relevance ranking — but it composes, which beats refusing the
+ * combination outright. The input is escaped: an unescaped user string is a regex injection, and
+ * something like `(a+)+$` is a denial of service all by itself.
+ */
+function keywordFilter(search: string): FilterQuery {
+  const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = { $regex: safe, $options: "i" };
+  return { $or: [{ title: rx }, { description: rx }, { tags: rx }] };
+}
 
 type FilterQuery = Record<string, any>;
 
@@ -22,8 +64,26 @@ function getOwnerId(item: IItem): string {
 
 export class ItemService {
   async createItem(ownerId: string, data: Partial<IItem>): Promise<IItem> {
+    /**
+     * Fill in coordinates from the address text when the client did not send any.
+     *
+     * Almost no listing had them: the app has no GPS button and no map picker, so the only path was
+     * typing decimal degrees by hand, which nobody does. 8 of 28 listings had a point. Without
+     * coordinates a listing cannot appear on the map or in any "near me" result, however complete
+     * the rest of it looks — so geocoding the city/province/country the owner already typed is the
+     * difference between a listing being findable and not.
+     *
+     * Never fatal. A geocoder outage must not stop someone listing an item.
+     */
+    const resolved = await resolveCoordinates(
+      data.location as (AddressParts & { coordinates?: unknown }) | undefined
+    );
+
     return itemRepo.create({
       ...data,
+      ...(resolved && data.location
+        ? { location: { ...data.location, ...coordinateFields(resolved.point, resolved) } }
+        : {}),
       owner: ownerId as unknown as IItem["owner"],
     });
   }
@@ -42,7 +102,8 @@ export class ItemService {
       sortOrder,
       lat,
       lng,
-      radius = 20,
+      radius,
+      distance,
     } = query;
 
     const filter: FilterQuery = { isActive: true, isPaused: false };
@@ -54,21 +115,48 @@ export class ItemService {
       if (minPrice) filter.dailyRate.$gte = Number(minPrice);
       if (maxPrice) filter.dailyRate.$lte = Number(maxPrice);
     }
-    if (search) filter.$text = { $search: search as string };
 
-    if (lat && lng) {
-      const latDelta = Number(radius) / 111;
-      const lngDelta = Number(radius) / (111 * Math.cos(Number(lat) * Math.PI / 180));
-      filter["location.coordinates.lat"] = { $gte: Number(lat) - latDelta, $lte: Number(lat) + latDelta };
-      filter["location.coordinates.lng"] = { $gte: Number(lng) - lngDelta, $lte: Number(lng) + lngDelta };
+    const centre = centreOf(lat, lng);
+    /**
+     * `distance` is the name the app already sends and means the same thing; `radius` wins when
+     * both are present. Both are kilometres.
+     */
+    const radiusKm = Number(radius ?? distance ?? DEFAULT_RADIUS_KM);
+
+    /**
+     * sortBy=distance needs a centre to measure from. Without one it falls back to the default
+     * order instead of erroring: a map screen that has not got a GPS fix yet should still show
+     * listings.
+     */
+    const byDistance = sortBy === "distance" && centre !== null;
+
+    if (search) {
+      Object.assign(
+        filter,
+        byDistance ? keywordFilter(search as string) : { $text: { $search: search as string } }
+      );
     }
 
-    const { items, total } = await itemRepo.findMany(filter, {
-      page: Number(page),
-      limit: Math.min(Number(limit), CONSTANTS.MAX_PAGE_SIZE),
-      sortBy: sortBy as string,
-      sortOrder: sortOrder as "asc" | "desc",
-    });
+    const pageSize = Math.min(Number(limit), CONSTANTS.MAX_PAGE_SIZE);
+    const { items: rows, total } = byDistance
+      ? await itemRepo.findManyNearby(filter, {
+          near: centre as LatLng,
+          radiusKm,
+          page: Number(page),
+          limit: pageSize,
+        })
+      : await itemRepo.findMany(
+          { ...filter, ...(centre ? withinRadius(centre, radiusKm) : {}) },
+          {
+            page: Number(page),
+            limit: pageSize,
+            // "distance" is not a stored field; without a centre it cannot mean anything.
+            sortBy: sortBy === "distance" ? "createdAt" : (sortBy as string),
+            sortOrder: sortOrder as "asc" | "desc",
+          }
+        );
+
+    const items = attachDistance(rows, centre);
 
     const totalPages = Math.ceil(total / Number(limit));
     const pagination: PaginationMeta = {
@@ -84,29 +172,29 @@ export class ItemService {
   }
 
   async getFeed(query: { lat?: number; lng?: number; radius?: number; limit?: number }) {
-    const { lat, lng, radius = 20, limit = 10 } = query;
+    const { lat, lng, radius = DEFAULT_RADIUS_KM, limit = 10 } = query;
     const baseFilter: FilterQuery = { isActive: true, isPaused: false };
-
-    const nearMeFilter: FilterQuery = { ...baseFilter };
-    if (lat && lng) {
-      const latDelta = radius / 111;
-      const lngDelta = radius / (111 * Math.cos(lat * Math.PI / 180));
-      nearMeFilter["location.coordinates.lat"] = { $gte: lat - latDelta, $lte: lat + latDelta };
-      nearMeFilter["location.coordinates.lng"] = { $gte: lng - lngDelta, $lte: lng + lngDelta };
-    }
+    const centre = centreOf(lat, lng);
 
     const [nearMe, popular, recent] = await Promise.all([
-      lat && lng
-        ? itemRepo.findMany(nearMeFilter, { page: 1, limit, sortBy: "createdAt", sortOrder: "desc" })
+      /**
+       * "Near me" is ordered by distance, not by age — that is what the heading promises. It used
+       * to be a bounding box sorted by createdAt, so the first card was the newest listing in a
+       * 40 km square, which could easily be the furthest one in the section.
+       */
+      centre
+        ? itemRepo.findManyNearby(baseFilter, { near: centre, radiusKm: radius, page: 1, limit })
         : Promise.resolve({ items: [], total: 0 }),
       itemRepo.findMany(baseFilter, { page: 1, limit, sortBy: "totalRentals", sortOrder: "desc" }),
       itemRepo.findMany(baseFilter, { page: 1, limit, sortBy: "createdAt", sortOrder: "desc" }),
     ]);
 
+    // Distance goes on all three sections when a centre is known: a renter wants "how far away is
+    // this" on every card, not only on the nearby one.
     return {
-      nearMe: nearMe.items,
-      popular: popular.items,
-      recent: recent.items,
+      nearMe: attachDistance(nearMe.items, centre),
+      popular: attachDistance(popular.items, centre),
+      recent: attachDistance(recent.items, centre),
     };
   }
 
@@ -126,6 +214,27 @@ export class ItemService {
     if (getOwnerId(item) !== ownerId)
       throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
     const update: Record<string, unknown> = {};
+
+    /**
+     * Re-geocode when the address text changed but no coordinates came with it.
+     *
+     * The merge matters: an update may send only `city`, so the text is read on top of what is
+     * already stored rather than geocoding a fragment on its own. And if the client sent explicit
+     * coordinates, resolveCoordinates returns those untouched and nothing is looked up.
+     */
+    if (data.location && typeof data.location === "object") {
+      const incoming = data.location as AddressParts & { coordinates?: unknown };
+      const merged: AddressParts & { coordinates?: unknown } = {
+        address: incoming.address ?? item.location?.address ?? null,
+        city: incoming.city ?? item.location?.city ?? null,
+        province: incoming.province ?? item.location?.province ?? null,
+        country: incoming.country ?? item.location?.country ?? null,
+        coordinates: incoming.coordinates,
+      };
+      const resolved = await resolveCoordinates(merged);
+      if (resolved) Object.assign(update, coordinateUpdate(resolved.point, resolved));
+    }
+
     for (const [key, value] of Object.entries(data)) {
       if ((key === "location" || key === "deliveryOptions") && value && typeof value === "object") {
         for (const [k, v] of Object.entries(value as Record<string, unknown>)) {

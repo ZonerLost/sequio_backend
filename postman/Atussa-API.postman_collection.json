@@ -1564,6 +1564,65 @@
           ]
         },
         {
+          "name": "Browse listings nearby (nearest first)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items?lat=45.5017&lng=-73.5673&radius=20&sortBy=distance&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "items"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "45.5017"
+                },
+                {
+                  "key": "lng",
+                  "value": "-73.5673"
+                },
+                {
+                  "key": "radius",
+                  "value": "20"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "distance"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Radius search around a point, nearest first. `radius` is **kilometres** and a true circle, not a bounding box. Every item carries `distanceKm` (null when the listing has no coordinates). `distance` is accepted as an alias for `radius`; `radius` wins if both are sent. `sortBy=distance` needs lat+lng and is the one order that does not float boosted listings to the top.\n\n_Auth: public_",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().data || [];",
+                  "pm.test('distanceKm is reported', () => items.every(i => i.distanceKm === null || typeof i.distanceKm === 'number'));",
+                  "pm.test('nearest first', () => {",
+                  "  const d = items.map(i => i.distanceKm).filter(v => typeof v === 'number');",
+                  "  pm.expect(d.every((v, idx) => idx === 0 || v >= d[idx - 1])).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Nearby feed",
           "request": {
             "method": "GET",
