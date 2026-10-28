@@ -2,6 +2,10 @@ import { BookingRepository } from "../repository/booking.repository";
 import { ItemRepository } from "../repository/item.repository";
 import { UserModel } from "../models/user.model";
 import { uploadToS3 } from "../helpers/s3.helper";
+import {
+  withSignedBookingPhotos,
+  withSignedBookingPhotosAll,
+} from "../helpers/booking-photos.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
 import { IBooking } from "../models/booking.model";
@@ -123,25 +127,34 @@ export class BookingService {
     const renterName = renter ? `${renter.firstName} ${renter.lastName}` : "Someone";
     notifyBookingRequest(itemOwnerId, renterName, item.title, booking._id.toString()).catch(() => {});
 
-    return booking;
+    // A new booking cannot have photos yet, so this only normalises the shape — every method that
+    // returns a booking returns the same thing, with no endpoint to remember as an exception.
+    return withSignedBookingPhotos(booking);
   }
 
   async getSentBookings(renterId: string, status?: string, page = 1, limit = 10) {
     const { bookings, total } = await bookingRepo.findByRenter(renterId, status, page, limit);
-    return { bookings, pagination: buildPagination(total, page, limit) };
+    return {
+      bookings: await withSignedBookingPhotosAll(bookings),
+      pagination: buildPagination(total, page, limit),
+    };
   }
 
   async getReceivedBookings(ownerId: string, status?: string, page = 1, limit = 10) {
     const { bookings, total } = await bookingRepo.findByOwner(ownerId, status, page, limit);
-    return { bookings, pagination: buildPagination(total, page, limit) };
+    return {
+      bookings: await withSignedBookingPhotosAll(bookings),
+      pagination: buildPagination(total, page, limit),
+    };
   }
 
   async getBookingById(bookingId: string, userId: string) {
     const booking = await bookingRepo.findById(bookingId);
     if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
     const isParty = getId(booking.renter) === userId || getId(booking.owner) === userId;
+    // This check is what makes signing the photos safe — see booking-photos.helper.ts.
     if (!isParty) throw new AppError("Access denied", HTTP_STATUS.FORBIDDEN);
-    return booking;
+    return withSignedBookingPhotos(booking);
   }
 
   async acceptBooking(bookingId: string, ownerId: string) {
@@ -161,7 +174,7 @@ export class BookingService {
     const item = await itemRepo.findById(itemId);
     notifyBookingAccepted(getId(booking.renter), item?.title ?? "your item", bookingId).catch(() => {});
 
-    return result;
+    return withSignedBookingPhotos(result);
   }
 
   async declineBooking(bookingId: string, ownerId: string, reason?: string) {
@@ -180,7 +193,7 @@ export class BookingService {
     const item = await itemRepo.findById(itemId);
     notifyBookingDeclined(getId(booking.renter), item?.title ?? "your item", bookingId).catch(() => {});
 
-    return result;
+    return withSignedBookingPhotos(result);
   }
 
   async cancelBooking(bookingId: string, renterId: string, reason?: string) {
@@ -204,7 +217,7 @@ export class BookingService {
     const renterName = renter ? `${renter.firstName} ${renter.lastName}` : "Someone";
     notifyBookingCancelled(getId(booking.owner), renterName, item?.title ?? "your item", bookingId).catch(() => {});
 
-    return result;
+    return withSignedBookingPhotos(result);
   }
 
   async completeBooking(bookingId: string, ownerId: string) {
@@ -227,7 +240,7 @@ export class BookingService {
     });
     notifyBookingCompleted(getId(booking.renter), item?.title ?? "your item", bookingId).catch(() => {});
 
-    return updated;
+    return withSignedBookingPhotos(updated);
   }
 
   async uploadRentalPhotos(
@@ -253,7 +266,10 @@ export class BookingService {
     );
 
     const field = type === "pre" ? "preRentalPhotos" : "postRentalPhotos";
-    return bookingRepo.addPhotos(bookingId, field, urls);
+    const updated = await bookingRepo.addPhotos(bookingId, field, urls);
+    // Signed here too: the app renders the strip straight after an upload, and a raw URL there would
+    // 403 exactly like it used to.
+    return withSignedBookingPhotos(updated);
   }
 
   calculateQuote(

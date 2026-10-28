@@ -43,6 +43,42 @@ export const getPresignedUrl = async (
   return getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
 };
 
+/**
+ * Signs a list of stored URLs for reading, falling back to the raw URL for any that cannot be signed.
+ *
+ * Used for the two prefixes that are deliberately **not** in the bucket policy — `disputes/` and
+ * `bookings/` — where the raw URL 403s for everyone. That is correct storage for damage claims, and
+ * useless to a client, so every read hands back a short-lived signed URL instead.
+ *
+ * Three decisions worth keeping:
+ *
+ * - **A signing failure returns the raw URL, it does not fail the read.** A broken thumbnail beats a
+ *   broken booking screen. The 403 is then visible to the client, which is also a true statement
+ *   about that object.
+ * - **A URL that is already signed is returned untouched.** Signing a signed URL would fold the
+ *   existing query string into the key and produce a URL that 403s for a brand new reason — the
+ *   nastiest possible outcome, because it looks exactly like the bug this replaces.
+ * - **Never persist what comes out of here.** `deleteFromS3` and the next signing both recover the
+ *   key with `split(".amazonaws.com/")[1]`, so storing a signed URL breaks deletion permanently.
+ */
+export const signUrls = async (
+  urls: string[] | undefined | null,
+  expiresInSeconds: number
+): Promise<string[]> => {
+  if (!urls?.length) return [];
+  return Promise.all(
+    urls.map(async (url) => {
+      if (typeof url !== "string" || !url) return url;
+      if (url.includes("X-Amz-Signature=")) return url;
+      try {
+        return await getPresignedUrl(url, expiresInSeconds);
+      } catch {
+        return url;
+      }
+    })
+  );
+};
+
 export const deleteFromS3 = async (fileUrl: string): Promise<void> => {
   const key = fileUrl.split(".amazonaws.com/")[1];
   if (!key) return;

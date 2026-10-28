@@ -1,5 +1,9 @@
 import { UserModel } from "../models/user.model";
 import { getPresignedUrl } from "../helpers/s3.helper";
+import {
+  withSignedBookingPhotos,
+  withSignedBookingPhotosAll,
+} from "../helpers/booking-photos.helper";
 import { ItemModel } from "../models/item.model";
 import { BookingModel } from "../models/booking.model";
 import { PaymentModel } from "../models/payment.model";
@@ -600,7 +604,10 @@ export class AdminService {
       BookingModel.countDocuments(filter),
     ]);
 
-    return { bookings, pagination: buildPagination(total, page, limit) };
+    return {
+      bookings: await withSignedBookingPhotosAll(bookings),
+      pagination: buildPagination(total, page, limit),
+    };
   }
 
   async getBookingById(bookingId: string) {
@@ -609,7 +616,7 @@ export class AdminService {
       .populate("renter", "firstName lastName email phone")
       .populate("owner", "firstName lastName email phone");
     if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
-    return booking;
+    return withSignedBookingPhotos(booking);
   }
 
   // ── Payment Management ────────────────────────────────────

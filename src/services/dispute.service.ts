@@ -1,6 +1,6 @@
 import { DisputeRepository } from "../repository/dispute.repository";
 import { BookingRepository } from "../repository/booking.repository";
-import { getPresignedUrl, uploadToS3 } from "../helpers/s3.helper";
+import { signUrls, uploadToS3 } from "../helpers/s3.helper";
 import { getId } from "../helpers/id.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS } from "../config/constants";
@@ -95,15 +95,9 @@ export class DisputeService {
 
     const urls = (plain.evidence as string[] | undefined) ?? [];
     if (urls.length) {
-      plain.evidence = await Promise.all(
-        urls.map(async (url) => {
-          try {
-            return await getPresignedUrl(url, EVIDENCE_URL_TTL_SECONDS);
-          } catch {
-            return url;
-          }
-        })
-      );
+      // signUrls is shared with booking condition photos, which are the same kind of material and
+      // were the same kind of broken. Two copies of this loop would drift.
+      plain.evidence = await signUrls(urls, EVIDENCE_URL_TTL_SECONDS);
       // So a client knows when to re-fetch rather than discovering expiry as a broken image.
       plain.evidenceUrlsExpireAt = new Date(Date.now() + EVIDENCE_URL_TTL_SECONDS * 1000);
     }

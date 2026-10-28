@@ -199,6 +199,14 @@
  * /bookings/{id}:
  *   get:
  *     summary: Get booking details
+ *     description: >
+ *       Either party only — a caller who is neither renter nor owner gets 403.
+ *
+ *
+ *       `preRentalPhotos` and `postRentalPhotos` are returned as **signed URLs valid for 1 hour**,
+ *       with `photoUrlsExpireAt` alongside them. The stored URLs are private and answer 403 on
+ *       their own. Re-fetch the booking for fresh URLs once they expire. The same applies to
+ *       `/bookings/sent` and `/bookings/received`.
  *     tags: [Bookings]
  *     security:
  *       - BearerAuth: []
@@ -305,6 +313,15 @@
  * /bookings/{id}/pre-photos:
  *   post:
  *     summary: Upload pre-rental photos (owner only)
+ *     description: >
+ *       Uploads pre-rental condition photos (field `photos`, up to 5). Owner only.
+ *
+ *
+ *       The `bookings/` S3 prefix is **private**: these are damage records and are not
+ *       world-readable like catalogue photos. `preRentalPhotos` and `postRentalPhotos` come back as
+ *       **signed URLs valid for 1 hour**, alongside `photoUrlsExpireAt`. Use them as-is; do not
+ *       store or share them. Past `photoUrlsExpireAt`, re-fetch the booking to get fresh URLs
+ *       rather than re-requesting the expired one, which answers 403.
  *     tags: [Bookings]
  *     security:
  *       - BearerAuth: []
@@ -332,6 +349,15 @@
  * /bookings/{id}/post-photos:
  *   post:
  *     summary: Upload post-rental photos (owner only)
+ *     description: >
+ *       Uploads post-rental condition photos (field `photos`, up to 5). Owner only.
+ *
+ *
+ *       The `bookings/` S3 prefix is **private**: these are damage records and are not
+ *       world-readable like catalogue photos. `preRentalPhotos` and `postRentalPhotos` come back as
+ *       **signed URLs valid for 1 hour**, alongside `photoUrlsExpireAt`. Use them as-is; do not
+ *       store or share them. Past `photoUrlsExpireAt`, re-fetch the booking to get fresh URLs
+ *       rather than re-requesting the expired one, which answers 403.
  *     tags: [Bookings]
  *     security:
  *       - BearerAuth: []
