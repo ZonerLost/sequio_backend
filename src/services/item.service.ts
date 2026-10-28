@@ -22,6 +22,20 @@ const BOOST_DURATION_DAYS = 7;
 const BOOST_PRICE_CAD = 9.99;
 
 /** Radius used when a caller gives a centre but no distance. Kilometres, like every radius here. */
+/**
+ * What a visitor is allowed to see.
+ *
+ * `isPaused: { $ne: true }` and not `isPaused: false`, because Mongo does not match a missing field
+ * against false. 12 of 28 listings were created before the field existed, so a plain `false` hid 10
+ * active listings from every browse, search and feed — invisible to the whole app, with nothing in
+ * the owner UI to explain it. Pausing is an explicit action nobody could have taken before the
+ * feature shipped, so an absent flag means not paused.
+ *
+ * Same trap as `booking.paymentStatus`: a schema default applies to new documents only, never
+ * retroactively.
+ */
+const visibleToPublic = (): FilterQuery => ({ isActive: true, isPaused: { $ne: true } });
+
 const DEFAULT_RADIUS_KM = 20;
 
 /**
@@ -106,7 +120,7 @@ export class ItemService {
       distance,
     } = query;
 
-    const filter: FilterQuery = { isActive: true, isPaused: false };
+    const filter: FilterQuery = visibleToPublic();
     if (category) filter.category = category;
     if (city) filter["location.city"] = { $regex: city, $options: "i" };
     if (condition) filter.condition = condition;
@@ -173,7 +187,7 @@ export class ItemService {
 
   async getFeed(query: { lat?: number; lng?: number; radius?: number; limit?: number }) {
     const { lat, lng, radius = DEFAULT_RADIUS_KM, limit = 10 } = query;
-    const baseFilter: FilterQuery = { isActive: true, isPaused: false };
+    const baseFilter: FilterQuery = visibleToPublic();
     const centre = centreOf(lat, lng);
 
     const [nearMe, popular, recent] = await Promise.all([
