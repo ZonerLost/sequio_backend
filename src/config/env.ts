@@ -46,6 +46,22 @@ export const ENV = {
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
 
   /**
+   * Timed work: boosts expiring, deposits releasing, owners being paid.
+   *
+   * Defaults to ON in production and OFF everywhere else, deliberately. A developer machine points
+   * at the same Atlas cluster as production, so a default of "on" would have every `npm run dev`
+   * quietly running production jobs; a default of "off" would mean one forgotten environment
+   * variable and nothing ever expires, silently, which is the bug this feature exists to fix.
+   * Keying it to NODE_ENV is safe in both directions. Set it explicitly to override either way.
+   */
+  SCHEDULER_ENABLED:
+    process.env.SCHEDULER_ENABLED !== undefined
+      ? process.env.SCHEDULER_ENABLED === "true"
+      : process.env.NODE_ENV === "production",
+  /** How often to look for due jobs. Jobs declare their own interval; this is the resolution. */
+  SCHEDULER_TICK_MS: Number(process.env.SCHEDULER_TICK_MS) || 60_000,
+
+  /**
    * Geocoding: turning an address into coordinates.
    *
    * Default provider is OpenStreetMap Nominatim, which needs no key and is the same data the

@@ -4,6 +4,7 @@ import { connectDatabase } from "./config/database";
 import { ENV } from "./config/env";
 import { logger } from "./config/logger";
 import { initSocket, setIO } from "./socket";
+import { initScheduler, stopScheduler } from "./scheduler";
 
 /**
  * Three keys are required (secret, publishable, webhook secret) and the two app deep links are
@@ -56,6 +57,29 @@ const startServer = async () => {
     logger.info(`🔗 Health: http://localhost:${ENV.PORT}/api/${ENV.API_VERSION}/health`);
     logger.info(`🔌 Socket.io ready`);
   });
+
+  /**
+   * Started after the server is listening, and deliberately not awaited into the boot path: a
+   * scheduler that cannot reach its lease collection must not stop the API from serving traffic.
+   * It logs and the jobs simply do not run.
+   */
+  initScheduler().catch((err) =>
+    logger.error("Scheduler failed to start", { message: (err as Error).message })
+  );
+
+  /**
+   * Give in-flight jobs a chance to finish before the process goes. App Runner sends SIGTERM on a
+   * deploy, and a job cut in half is a job that has to be safe to re-run — which they are, but
+   * finishing cleanly is better than relying on it.
+   */
+  const shutdown = (signal: string) => {
+    logger.info(`Received ${signal}, shutting down`);
+    stopScheduler()
+      .catch(() => undefined)
+      .finally(() => httpServer.close(() => process.exit(0)));
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 };
 
 process.on("unhandledRejection", (reason) => {
