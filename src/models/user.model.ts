@@ -67,6 +67,17 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, enum: ["user", "admin"], default: "user" },
     isActive: { type: Boolean, default: true },
     isBanned: { type: Boolean, default: false },
+    /**
+     * Suspended from receiving new bookings after a third owner cancellation in 90 days.
+     *
+     * A date rather than a flag, read at booking time, so the suspension lapses on its own with no
+     * scheduled job to un-set it. A value in the past is simply not a suspension.
+     *
+     * Note this stops them *renting out*; it does not ban the account. They can still rent from
+     * other people, message, and manage their listings.
+     */
+    ownerSuspendedUntil: { type: Date },
+    ownerSuspendedAt: { type: Date },
     lastLoginAt: { type: Date },
     fcmToken: { type: String },
     // Stripe Connect. Status only: the account number and every KYC document live at Stripe, so a

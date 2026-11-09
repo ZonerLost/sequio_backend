@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import { AdminService } from "../services/admin.service";
+import { OwnerCancellationService } from "../services/owner-cancellation.service";
 import { sendSuccess } from "../helpers/response.helper";
 
 const adminService = new AdminService();
+const ownerCancellationService = new OwnerCancellationService();
 
 export class AdminController {
   // ── Users ─────────────────────────────────────────────────
@@ -214,6 +216,47 @@ export class AdminController {
         status: status as string,
       });
       sendSuccess(res, "Payments retrieved", result.payments, 200, result.pagination);
+    } catch (err) { next(err); }
+  }
+
+  async listOwnerCancellations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await ownerCancellationService.list({
+        ownerId: req.query.ownerId ? String(req.query.ownerId) : undefined,
+        page: req.query.page ? Number(req.query.page) : 1,
+        limit: req.query.limit ? Number(req.query.limit) : 20,
+      });
+      sendSuccess(res, "Owner cancellations retrieved", result.cancellations, 200, {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / result.limit),
+        hasNext: result.page * result.limit < result.total,
+        hasPrev: result.page > 1,
+      });
+    } catch (err) { next(err); }
+  }
+
+  async reviewOwnerCancellation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await ownerCancellationService.review(
+        String(req.params.id),
+        req.user!.userId,
+        Boolean(req.body.excused),
+        String(req.body.note)
+      );
+      sendSuccess(
+        res,
+        req.body.excused ? "Cancellation excused" : "Strike reinstated",
+        result
+      );
+    } catch (err) { next(err); }
+  }
+
+  async liftOwnerSuspension(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = await ownerCancellationService.liftSuspension(String(req.params.id));
+      sendSuccess(res, "Suspension lifted", user);
     } catch (err) { next(err); }
   }
 

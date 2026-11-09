@@ -41,6 +41,9 @@ export interface IUser extends Document {
   role: "user" | "admin";
   isActive: boolean;
   isBanned: boolean;
+  /** Set while the owner may not receive new bookings. A past date is not a suspension. */
+  ownerSuspendedUntil?: Date;
+  ownerSuspendedAt?: Date;
   lastLoginAt?: Date;
   fcmToken?: string;
   /** Stripe Connect status. Holds no bank details — those stay with Stripe. */

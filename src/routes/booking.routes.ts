@@ -8,6 +8,7 @@ import {
   declineBookingSchema,
   cancelBookingSchema,
   confirmHandoverSchema,
+  ownerCancelSchema,
   confirmReturnSchema,
   disputeReturnTimeSchema,
   bookingQuerySchema,
@@ -28,6 +29,17 @@ router.put("/:id/accept", ctrl.acceptBooking.bind(ctrl));
 router.put("/:id/decline", validate(declineBookingSchema), ctrl.declineBooking.bind(ctrl));
 router.put("/:id/cancel", validate(cancelBookingSchema), ctrl.cancelBooking.bind(ctrl));
 router.put("/:id/complete", ctrl.completeBooking.bind(ctrl));
+/**
+ * Multipart so the owner can attach evidence — a photo of the broken item, the damage, the
+ * accident. `upload.array` must come before `validate`, because the text fields do not exist on
+ * req.body until multer has parsed the form.
+ */
+router.put(
+  "/:id/owner-cancel",
+  upload.array("evidence", 5),
+  validate(ownerCancelSchema),
+  ctrl.ownerCancelBooking.bind(ctrl)
+);
 router.put("/:id/handover", validate(confirmHandoverSchema), ctrl.confirmHandover.bind(ctrl));
 router.put("/:id/return", validate(confirmReturnSchema), ctrl.confirmReturn.bind(ctrl));
 router.put(

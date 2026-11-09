@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { OWNER_CANCELLATION_REASONS } from "../models/owner-cancellation.model";
 
 // POST /bookings/quote had no validator, so a malformed body produced a 200 with null prices.
 // Deliberately permissive about what the client already sends; it only rejects nonsense.
@@ -97,6 +98,29 @@ export const disputeReturnTimeSchema = Joi.object({
     "any.required": "Say when you believe the item was actually returned",
   }),
   reason: Joi.string().min(3).max(500).required(),
+});
+
+/**
+ * An owner cancelling a booking they had already accepted.
+ *
+ * The explanation is required in **every** case, not only for "other". The specification asks for
+ * "categories ... plus a required written explanation", and a bare category is not something an
+ * administrator can review three weeks later when the owner appeals their suspension.
+ */
+export const ownerCancelSchema = Joi.object({
+  reason: Joi.string()
+    .valid(...OWNER_CANCELLATION_REASONS)
+    .required()
+    .messages({ "any.only": "Choose one of the listed cancellation reasons" }),
+  explanation: Joi.string().min(10).max(1000).required().messages({
+    "string.min": "Explain what happened in at least a few words — this is reviewed if you appeal",
+    "any.required": "An explanation is required",
+  }),
+});
+
+export const reviewCancellationSchema = Joi.object({
+  excused: Joi.boolean().required(),
+  note: Joi.string().min(3).max(500).required(),
 });
 
 export const bookingQuerySchema = Joi.object({

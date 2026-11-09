@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import { BookingService } from "../services/booking.service";
+import { OwnerCancellationService } from "../services/owner-cancellation.service";
 import { sendSuccess, sendCreated } from "../helpers/response.helper";
 
 const bookingService = new BookingService();
+const ownerCancellationService = new OwnerCancellationService();
 
 export class BookingController {
   async createBooking(req: Request, res: Response, next: NextFunction) {
@@ -137,6 +139,21 @@ export class BookingController {
         String(req.body.reason)
       );
       sendSuccess(res, "Return time contested", booking);
+    } catch (err) { next(err); }
+  }
+
+  async ownerCancelBooking(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await ownerCancellationService.cancel(
+        String(req.params.id),
+        req.user!.userId,
+        {
+          reason: req.body.reason,
+          explanation: String(req.body.explanation),
+          evidenceFiles: req.files as Express.Multer.File[] | undefined,
+        }
+      );
+      sendSuccess(res, "Booking cancelled", result);
     } catch (err) { next(err); }
   }
 

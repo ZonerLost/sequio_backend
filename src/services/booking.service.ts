@@ -8,6 +8,7 @@ import {
 } from "../helpers/booking-photos.helper";
 import { AppError } from "../middleware/error.middleware";
 import { logger } from "../config/logger";
+import { OwnerCancellationService } from "./owner-cancellation.service";
 import { HTTP_STATUS } from "../config/constants";
 import { IBooking } from "../models/booking.model";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -23,6 +24,7 @@ import {
 } from "../helpers/notification.triggers";
 
 const ecoService = new EcoService();
+const ownerCancellationService = new OwnerCancellationService();
 const bookingRepo = new BookingRepository();
 const itemRepo = new ItemRepository();
 
@@ -80,6 +82,23 @@ export class BookingService {
     const itemOwnerId = getId(item.owner);
     if (itemOwnerId === renterId) {
       throw new AppError("You cannot book your own item", HTTP_STATUS.BAD_REQUEST);
+    }
+
+    /**
+     * A suspended owner cannot receive new bookings — the third-strike consequence. Checked here
+     * rather than by hiding their listings, because hiding a listing is a much bigger hammer and
+     * the specification says "suspension from receiving new bookings", not "delisting".
+     *
+     * The message says nothing about why. Telling a renter that this particular owner has been
+     * suspended for repeated cancellations is a disclosure about a third party they have no business
+     * receiving.
+     */
+    const suspendedUntil = await ownerCancellationService.isSuspended(itemOwnerId);
+    if (suspendedUntil) {
+      throw new AppError(
+        "This item is not accepting bookings at the moment",
+        HTTP_STATUS.BAD_REQUEST
+      );
     }
 
     const start = new Date(data.startDate);

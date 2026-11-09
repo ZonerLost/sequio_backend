@@ -14,6 +14,8 @@ export const NOTIFICATION_TYPES = [
   "booking_cancelled",
   "booking_completed",
   "return_time_disputed",
+  "owner_cancelled",
+  "owner_strike",
   "review_received",
   "message_received",
   "dispute_opened",

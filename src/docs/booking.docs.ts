@@ -310,6 +310,60 @@
 
 /**
  * @swagger
+ * /bookings/{id}/owner-cancel:
+ *   put:
+ *     summary: Owner cancels a booking they had accepted
+ *     description: >
+ *       Owner only, and only while the booking is `accepted` or `ready_for_handover` — once the
+ *       renter has the item, cancelling is not the remedy and a dispute is.
+ *
+ *
+ *       **multipart/form-data.** `reason` and `explanation` are both required, in every case and
+ *       not only for "other": a bare category is not something an administrator can review weeks
+ *       later when the owner appeals. Up to 5 `evidence` files may be attached; they are stored
+ *       privately and served as signed URLs, never public.
+ *
+ *
+ *       The renter is refunded **in full** — rental, the renter-side amount and the taxes on both —
+ *       and Atussa keeps no commission on a cancelled rental. If the refund fails the cancellation
+ *       still stands and `refundOutstanding` is true.
+ *
+ *
+ *       **Every owner cancellation counts as a strike by default.** First = warning, second within
+ *       a rolling 90 days = final warning, third = temporary suspension from receiving new bookings.
+ *       An administrator can excuse any of them afterwards, which recomputes the count.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [reason, explanation]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 enum: [damaged_or_unavailable, theft, emergency, scheduling_conflict, other]
+ *               explanation: { type: string, minLength: 10, maxLength: 1000 }
+ *               evidence:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *     responses:
+ *       200:
+ *         description: >
+ *           Cancelled. Returns the cancellation record, `outcome`
+ *           (none | warning | final_warning | suspension), `strikeNumber` and `refundOutstanding`.
+ *       400: { description: The booking is not in a state the owner can cancel }
+ *       403: { description: Not the owner }
+ *       409: { description: Already cancelled }
+ *
  * /bookings/{id}/handover:
  *   put:
  *     summary: Confirm the item actually changed hands

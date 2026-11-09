@@ -3,6 +3,7 @@ import { AdminController } from "../controllers/admin.controller";
 import { authenticate, authorize } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import Joi from "joi";
+import { reviewCancellationSchema } from "../validators/booking.validator";
 
 const router = Router();
 const ctrl = new AdminController();
@@ -99,6 +100,20 @@ router.get("/bookings", ...adminGuard, validate(querySchema, "query"), ctrl.getB
 router.get("/bookings/series", ...adminGuard, validate(statsQuerySchema, "query"), ctrl.getBookingSeries.bind(ctrl));
 router.get("/bookings/:id", ...adminGuard, ctrl.getBookingById.bind(ctrl));
 router.put("/bookings/:id/cancel", ...adminGuard, validate(cancelBookingSchema), ctrl.cancelBooking.bind(ctrl));
+
+// ── Owner cancellations ───────────────────────────────────
+// Every owner cancellation counts as a strike by default and is excused by a human, because the
+// specification says administrators "reverse" warnings — you can only reverse what already
+// happened. See owner-cancellation.model.ts.
+router.get("/owner-cancellations", ...adminGuard, ctrl.listOwnerCancellations.bind(ctrl));
+router.put(
+  "/owner-cancellations/:id/review",
+  ...adminGuard,
+  validate(reviewCancellationSchema),
+  ctrl.reviewOwnerCancellation.bind(ctrl)
+);
+/** The appeal outcome: lifts the suspension without touching the strikes behind it. */
+router.put("/users/:id/lift-suspension", ...adminGuard, ctrl.liftOwnerSuspension.bind(ctrl));
 
 // ── Payments ──────────────────────────────────────────────
 router.get("/payments", ...adminGuard, validate(querySchema, "query"), ctrl.getPayments.bind(ctrl));

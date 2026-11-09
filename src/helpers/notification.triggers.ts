@@ -90,6 +90,62 @@ export async function notifyReturnTimeDisputed(
   });
 }
 
+/**
+ * Tells the renter their owner pulled out.
+ *
+ * The refund status is in the body on purpose. "Your booking is cancelled" without saying what
+ * happened to the money they already paid is the message most likely to generate a support ticket.
+ */
+export async function notifyBookingCancelledByOwner(
+  userId: string,
+  itemTitle: string,
+  bookingId: string,
+  explanation: string,
+  refunded: boolean
+): Promise<void> {
+  if (!userId) return;
+  await notificationService.send({
+    userId,
+    type: "owner_cancelled",
+    title: "Booking cancelled by the owner",
+    body:
+      `The owner cancelled your booking for "${itemTitle}": ${explanation}. ` +
+      (refunded
+        ? "You have been refunded in full."
+        : "Your refund is being processed and support has been notified."),
+    data: { bookingId, screen: "booking_detail" },
+  });
+}
+
+/**
+ * Tells an owner where they stand after cancelling.
+ *
+ * Deliberately explicit about the count and what comes next. A warning nobody understood is a
+ * suspension that arrives as a surprise, and the appeal route has to be obvious.
+ */
+export async function notifyOwnerStrike(
+  userId: string,
+  outcome: "warning" | "final_warning" | "suspension",
+  strikeNumber: number,
+  suspensionDays: number
+): Promise<void> {
+  if (!userId) return;
+  const body =
+    outcome === "suspension"
+      ? `This is your third cancellation in 90 days, so you cannot receive new bookings for ${suspensionDays} days. Contact support if you believe this is wrong — every cancellation is reviewed.`
+      : outcome === "final_warning"
+        ? "This is your second cancellation in 90 days. A third within the same period will temporarily stop you receiving new bookings."
+        : "Cancelling a confirmed booking affects the renter's plans. Repeated cancellations within 90 days can stop you receiving new bookings.";
+
+  await notificationService.send({
+    userId,
+    type: "owner_strike",
+    title: outcome === "suspension" ? "Your listings are temporarily suspended" : "Cancellation recorded",
+    body,
+    data: { strikeNumber: String(strikeNumber), screen: "my_listings" },
+  });
+}
+
 export async function notifyBookingCancelledByAdmin(
   userIds: string[],
   itemTitle: string,
