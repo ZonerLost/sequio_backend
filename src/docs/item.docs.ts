@@ -105,6 +105,54 @@
  *       401:
  *         description: Unauthorized
  *
+ * /items/catalog:
+ *   get:
+ *     tags: [Items]
+ *     summary: The full category tree for the Add Item picker and search filters
+ *     security: []
+ *     description: >
+ *       12 categories, their subcategories and the item types under each. Inactive, merged and
+ *       prohibited nodes are left out — they exist so historical listings keep resolving, not so
+ *       anything new can be filed under them.
+ *
+ *
+ *       `slug` is the stable identifier and the only thing to store or compare. `nameEn` and
+ *       `nameFr` are display only, and **`nameFr` is currently null everywhere**: the client has
+ *       not supplied French copy. They fill it in through the admin dictionary, so it will appear
+ *       without an app release.
+ *     responses:
+ *       200: { description: The catalogue tree }
+ *
+ * /items/classify:
+ *   get:
+ *     tags: [Items]
+ *     summary: Suggest a category from a free-text item title
+ *     security: []
+ *     description: >
+ *       Call this as the owner types the title on Add Item. Returns up to three suggestions, each
+ *       with the category, subcategory, item type, a confidence between 0 and 1, and which word
+ *       produced the match.
+ *
+ *
+ *       **Respect `ambiguous`.** When it is true the top suggestions are close together and the
+ *       screen should show the choices rather than pre-selecting the first — "Kärcher" makes
+ *       pressure washers, carpet cleaners and steam cleaners, and guessing one is worse than asking.
+ *       When `unrecognised` is true nothing matched and the owner should pick manually.
+ *
+ *
+ *       Each suggestion carries `eligibility`. `prohibited` means the listing must not be allowed
+ *       to publish and `eligibilityNote` says why; `conditional` means it may publish but the
+ *       owner has requirements to meet, which the note states.
+ *     parameters:
+ *       - in: query
+ *         name: title
+ *         required: true
+ *         schema: { type: string, minLength: 2, maxLength: 200 }
+ *         example: Kärcher to clean the patio
+ *     responses:
+ *       200: { description: Suggestions, possibly ambiguous or empty }
+ *       400: { description: Title too short }
+ *
  * /items/feed:
  *   get:
  *     tags: [Items]

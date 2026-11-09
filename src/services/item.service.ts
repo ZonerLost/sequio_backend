@@ -15,6 +15,12 @@ import {
 import { HTTP_STATUS, CONSTANTS } from "../config/constants";
 import { IItem, IWeeklySchedule, PaginationMeta } from "../types";
 import { CO2_BY_CATEGORY } from "../models/eco.model";
+import { classify } from "../helpers/classification.helper";
+import {
+  CategoryModel,
+  SubcategoryModel,
+  ItemTypeModel,
+} from "../models/catalog.model";
 
 const userRepo = new UserRepository();
 
@@ -404,6 +410,63 @@ export class ItemService {
       boostExpiresAt,
     });
     return updated!;
+  }
+
+  /**
+   * Suggests a classification for a free-text item title.
+   *
+   * Public and read-only: the owner types the title before anything is saved, and the Add Item
+   * screen asks on each pause in typing.
+   *
+   * `ambiguous` is the field to respect. When it is true the suggestions are close together and the
+   * client should show the choices rather than pre-selecting the first — the specification is
+   * explicit that "Kärcher" should return reasonable options instead of one falsely certain answer.
+   */
+  async classifyTitle(title: string) {
+    const result = await classify(title);
+    return {
+      suggestions: result.suggestions,
+      ambiguous: result.ambiguous,
+      unrecognised: result.unrecognised,
+    };
+  }
+
+  /**
+   * The whole catalogue tree, for the Add Item picker and the search filters.
+   *
+   * Inactive and merged nodes are left out: they exist so historical listings keep resolving, not
+   * so anyone can pick them for something new.
+   */
+  async getCatalog() {
+    const [categories, subcategories, itemTypes] = await Promise.all([
+      CategoryModel.find({ active: true, mergedInto: null }).sort({ sortOrder: 1 }).lean(),
+      SubcategoryModel.find({ active: true, mergedInto: null }).sort({ sortOrder: 1 }).lean(),
+      ItemTypeModel.find({ active: true, mergedInto: null, eligibility: { $ne: "prohibited" } })
+        .sort({ sortOrder: 1 })
+        .lean(),
+    ]);
+
+    return categories.map((c) => ({
+      slug: c.slug,
+      nameEn: c.nameEn,
+      nameFr: c.nameFr,
+      subcategories: subcategories
+        .filter((s) => s.category === c.slug)
+        .map((s) => ({
+          slug: s.slug,
+          nameEn: s.nameEn,
+          nameFr: s.nameFr,
+          itemTypes: itemTypes
+            .filter((t) => t.subcategory === s.slug)
+            .map((t) => ({
+              slug: t.slug,
+              nameEn: t.nameEn,
+              nameFr: t.nameFr,
+              eligibility: t.eligibility,
+              eligibilityNote: t.eligibilityNote,
+            })),
+        })),
+    }));
   }
 
   getFormConfig() {

@@ -9,6 +9,7 @@ import {
   updateScheduleSchema,
   itemQuerySchema,
   feedQuerySchema,
+  classifyQuerySchema,
 } from "../validators/item.validator";
 import { upload } from "../middleware/upload.middleware";
 import { CONSTANTS } from "../config/constants";
@@ -22,6 +23,8 @@ router.get("/boost-config", ctrl.getBoostConfig.bind(ctrl));
 
 // Public list routes
 router.get("/", validate(itemQuerySchema, "query"), ctrl.getItems.bind(ctrl));
+router.get("/catalog", ctrl.getCatalog.bind(ctrl));
+router.get("/classify", validate(classifyQuerySchema, "query"), ctrl.classifyTitle.bind(ctrl));
 router.get("/feed", validate(feedQuerySchema, "query"), ctrl.getFeed.bind(ctrl));
 
 // Authenticated list routes

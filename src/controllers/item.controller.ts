@@ -116,6 +116,20 @@ export class ItemController {
     } catch (err) { next(err); }
   }
 
+  async classifyTitle(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await itemService.classifyTitle(String(req.query.title ?? ""));
+      sendSuccess(res, "Classification suggested", result);
+    } catch (err) { next(err); }
+  }
+
+  async getCatalog(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const catalog = await itemService.getCatalog();
+      sendSuccess(res, "Catalog retrieved", catalog);
+    } catch (err) { next(err); }
+  }
+
   async getFormConfig(_req: Request, res: Response, next: NextFunction) {
     try {
       const config = itemService.getFormConfig();

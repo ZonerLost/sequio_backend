@@ -146,6 +146,13 @@ export const itemQuerySchema = Joi.object({
   distance: Joi.number().min(1).max(MAX_RADIUS_KM).optional(),
 });
 
+/** The Add Item screen asks on each pause in typing, so the title may be a fragment. */
+export const classifyQuerySchema = Joi.object({
+  title: Joi.string().min(2).max(200).required().messages({
+    "string.min": "Type a little more before asking for a suggestion",
+  }),
+});
+
 export const feedQuerySchema = Joi.object({
   lat: Joi.number().min(-90).max(90).optional(),
   lng: Joi.number().min(-180).max(180).optional(),
