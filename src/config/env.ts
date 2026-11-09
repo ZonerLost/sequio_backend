@@ -46,6 +46,25 @@ export const ENV = {
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
 
   /**
+   * Which pricing model applies to NEW bookings. Stored breakdowns are never recomputed.
+   *
+   * Defaults to the old model deliberately. The November 2026 model cannot ship until the client
+   * confirms the GST/QST base in writing — their own document says to confirm it before production,
+   * because the instruction came from a phone call with Revenu Quebec. Charging the new price with a
+   * guessed tax base would collect the right amount and remit the wrong tax, which is the worse of
+   * the two mistakes.
+   */
+  PRICING_MODEL: process.env.PRICING_MODEL === "2026-11" ? "2026-11" : "2026-09",
+  /**
+   * What GST/QST applies to under the 2026-11 model.
+   *
+   * "renter_total" is our reading of "the applicable total taxable transaction amount"; "fees_only"
+   * keeps the old behaviour of taxing only the platform's cut. Both are implemented and neither has
+   * been confirmed.
+   */
+  PRICING_TAX_BASE: process.env.PRICING_TAX_BASE === "renter_total" ? "renter_total" : "fees_only",
+
+  /**
    * Timed work: boosts expiring, deposits releasing, owners being paid.
    *
    * Defaults to ON in production and OFF everywhere else, deliberately. A developer machine points

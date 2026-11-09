@@ -452,6 +452,13 @@ export class BookingService {
     const pricing = calculatePricing(dailyRate, totalDays, deliveryFee, discountPercent);
 
     // The client renders this behind the "?" next to Atussa Fee; serving it keeps one wording.
-    return { totalDays, deliveryFee, pricing, atussaFeeExplainer: ATUSSA_FEE_EXPLAINER };
+    return {
+      totalDays,
+      deliveryFee,
+      pricing,
+      // Empty under 2026-11: the renter sees no fee line, so there is nothing to explain and the
+      // "?" should not be rendered at all.
+      atussaFeeExplainer: pricing.model === "2026-11" ? "" : ATUSSA_FEE_EXPLAINER,
+    };
   }
 }

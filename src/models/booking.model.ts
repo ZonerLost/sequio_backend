@@ -208,6 +208,15 @@ const BookingSchema = new Schema<IBooking>(
     // booking that was already agreed. Bookings created before 2026-09-29 have only the original
     // fields (5% fee, $100 deposit, no owner split) and must be read as-is.
     pricing: {
+      /**
+       * Which pricing model produced this breakdown, and what tax was applied to.
+       *
+       * There are three eras in this collection now: pre-2026-09 rows with only the original
+       * fields, 2026-09 rows, and 2026-11 ones. A missing `model` means pre-2026-11 — it is not
+       * safe to assume the current default applied retroactively (DO-NOT #13).
+       */
+      model: { type: String },
+      taxBase: { type: String },
       currency: { type: String, default: "CAD" },
       dailyRate: { type: Number, required: true },
       totalDays: { type: Number },

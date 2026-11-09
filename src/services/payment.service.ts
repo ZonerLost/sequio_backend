@@ -22,7 +22,7 @@ const priceBreakdownCents = (pricing: Record<string, any> | undefined) => {
 };
 
 import { HTTP_STATUS } from "../config/constants";
-import { PRICING, ATUSSA_FEE_EXPLAINER } from "../helpers/pricing.helper";
+import { PRICING, ATUSSA_FEE_EXPLAINER, activeModel } from "../helpers/pricing.helper";
 import { ENV } from "../config/env";
 import { PaymentMethod } from "../models/payment.model";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -66,11 +66,20 @@ export class PaymentService {
       // showed an editable "platform fee 5%" from a literal in its own source, which was both
       // unsaveable and wrong. Served from the one place the numbers actually live.
       pricing: {
+        /**
+         * The app reads this to render its price breakdown, so it has to know which model is in
+         * force. Under 2026-11 it must show the renter one number plus the tax line and nothing
+         * else — no base price, no markup, no commission, no itemised fee.
+         */
+        model: activeModel(),
         ownerCommissionPercent: PRICING.OWNER_COMMISSION_PERCENT,
+        renterMarkupPercent:
+          activeModel() === "2026-11" ? PRICING.RENTER_MARKUP_PERCENT : undefined,
+        showRenterBreakdown: activeModel() !== "2026-11",
         renterFeePercent: PRICING.RENTER_FEE_PERCENT,
         renterFeeMinimum: PRICING.RENTER_FEE_MINIMUM,
         taxes: PRICING.TAXES.map((t) => ({ code: t.code, label: t.label, rate: t.rate })),
-        atussaFeeExplainer: ATUSSA_FEE_EXPLAINER,
+        atussaFeeExplainer: activeModel() === "2026-11" ? "" : ATUSSA_FEE_EXPLAINER,
       },
     };
   }
