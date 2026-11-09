@@ -2,6 +2,25 @@ import { PaymentRepository } from "../repository/payment.repository";
 import { BookingRepository } from "../repository/booking.repository";
 import { UserRepository } from "../repository/user.repository";
 import { AppError } from "../middleware/error.middleware";
+import { recordMoneyEvent } from "../helpers/money-event.helper";
+/** Cents, from the booking's own stored breakdown — never recomputed. See pricing.helper.ts. */
+const toCents = (v: unknown): number => Math.round(Number(v ?? 0) * 100);
+
+const priceBreakdownCents = (pricing: Record<string, any> | undefined) => {
+  if (!pricing) return undefined;
+  const out: Record<string, number> = {};
+  if (pricing.rentalAmount !== undefined) out.rental = toCents(pricing.rentalAmount);
+  if (pricing.serviceFee !== undefined) out.renterFee = toCents(pricing.serviceFee);
+  if (pricing.deliveryFee) out.delivery = toCents(pricing.deliveryFee);
+  if (pricing.taxTotal !== undefined) out.tax = toCents(pricing.taxTotal);
+  if (pricing.ownerPayout?.amount !== undefined) out.ownerPayout = toCents(pricing.ownerPayout.amount);
+  if (pricing.ownerPayout?.commission !== undefined) {
+    out.ownerCommission = toCents(pricing.ownerPayout.commission);
+  }
+  if (pricing.platform?.revenue !== undefined) out.platformRevenue = toCents(pricing.platform.revenue);
+  return Object.keys(out).length ? out : undefined;
+};
+
 import { HTTP_STATUS } from "../config/constants";
 import { PRICING, ATUSSA_FEE_EXPLAINER } from "../helpers/pricing.helper";
 import { ENV } from "../config/env";
@@ -324,6 +343,20 @@ export class PaymentService {
     // whichever arrives first, the booking stops offering Pay Now.
     await bookingRepo.setPaymentStatus(data.bookingId, "paid");
 
+    // The ledger, after the money is confirmed and never before. The idempotency key is the intent,
+    // so this path and the webhook below cannot both record the same charge.
+    await recordMoneyEvent({
+      bookingId: data.bookingId,
+      paymentId: String(payment._id),
+      type: "charge",
+      amountCents: toCents(booking.pricing.totalAmount),
+      balanceEffect: "in",
+      breakdown: priceBreakdownCents(booking.pricing as Record<string, any>),
+      actor: { kind: "renter", id: payerId },
+      stripeId: stripePaymentIntentId,
+      idempotencyKey: stripePaymentIntentId ? `charge-${stripePaymentIntentId}` : undefined,
+    });
+
     notificationService
       .send({
         userId: getId(booking.owner),
@@ -392,6 +425,19 @@ export class PaymentService {
 
           await bookingRepo.setPaymentStatus(bookingId, "paid");
 
+          // Same key as the direct path above, so a webhook arriving after it is a no-op here.
+          await recordMoneyEvent({
+            bookingId,
+            paymentId: String(created._id),
+            type: "charge",
+            amountCents: toCents(booking.pricing.totalAmount),
+            balanceEffect: "in",
+            breakdown: priceBreakdownCents(booking.pricing as Record<string, any>),
+            actor: { kind: "webhook" },
+            stripeId: intent.id,
+            idempotencyKey: `charge-${intent.id}`,
+          });
+
           notificationService
             .send({
               userId: getId(booking.owner),
@@ -426,6 +472,19 @@ export class PaymentService {
       // "failed" rather than back to "unpaid": the renter should see that an attempt was made and
       // did not go through, and Pay Now stays available either way.
       await bookingRepo.setPaymentStatus(getId(payment.booking), "failed");
+
+      // Recorded even though nothing moved: a failed charge is part of the story of a booking, and
+      // balanceEffect "none" keeps it out of any total.
+      await recordMoneyEvent({
+        bookingId: getId(payment.booking),
+        paymentId: String(payment._id),
+        type: "charge_failed",
+        amountCents: toCents(payment.amount),
+        balanceEffect: "none",
+        actor: { kind: "webhook" },
+        stripeId: intent.id,
+        idempotencyKey: `charge-failed-${intent.id}`,
+      });
       logger.warn("Payment marked failed via Stripe webhook", {
         paymentId: payment._id.toString(),
         intentId: intent.id,

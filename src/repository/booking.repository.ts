@@ -1,4 +1,4 @@
-import { BookingModel, IBooking } from "../models/booking.model";
+import { BookingModel, IBooking, LIVE_BOOKING_STATUSES } from "../models/booking.model";
 import mongoose from "mongoose";
 
 export class BookingRepository {
@@ -72,6 +72,18 @@ export class BookingRepository {
    * this through updateStatus would mean every caller had to restate the current status, which is
    * exactly how a booking gets silently moved backwards.
    */
+  /**
+   * A partial update that does not touch `status`.
+   *
+   * Callers pass **dot paths** for anything nested (`"returned.disputed.by"`). Handing
+   * findByIdAndUpdate a nested object replaces the whole subdocument and silently wipes its
+   * siblings — DO-NOT #3, and here it would erase the recorded return time while saving a dispute
+   * about it.
+   */
+  async updateById(id: string, update: Record<string, unknown>): Promise<IBooking | null> {
+    return BookingModel.findByIdAndUpdate(id, update, { new: true });
+  }
+
   async setPaymentStatus(
     id: string,
     paymentStatus: IBooking["paymentStatus"]
@@ -87,7 +99,8 @@ export class BookingRepository {
   ): Promise<boolean> {
     const filter: Record<string, any> = {
       item: itemId,
-      status: { $in: ["pending", "accepted", "active"] },
+      // Every status in which the item is spoken for. Forgetting a new one here double-books it.
+      status: { $in: LIVE_BOOKING_STATUSES },
       $or: [
         { startDate: { $lte: endDate }, endDate: { $gte: startDate } },
       ],

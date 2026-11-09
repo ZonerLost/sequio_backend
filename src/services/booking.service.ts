@@ -7,6 +7,7 @@ import {
   withSignedBookingPhotosAll,
 } from "../helpers/booking-photos.helper";
 import { AppError } from "../middleware/error.middleware";
+import { logger } from "../config/logger";
 import { HTTP_STATUS } from "../config/constants";
 import { IBooking } from "../models/booking.model";
 import { buildPagination } from "../helpers/pagination.helper";
@@ -18,6 +19,7 @@ import {
   notifyBookingDeclined,
   notifyBookingCancelled,
   notifyBookingCompleted,
+  notifyReturnTimeDisputed,
 } from "../helpers/notification.triggers";
 
 const ecoService = new EcoService();
@@ -239,6 +241,148 @@ export class BookingService {
       console.error("Eco impact error:", err);
     });
     notifyBookingCompleted(getId(booking.renter), item?.title ?? "your item", bookingId).catch(() => {});
+
+    return withSignedBookingPhotos(updated);
+  }
+
+  /**
+   * Records that the item actually changed hands.
+   *
+   * **Either party may confirm**, deliberately. Whoever has their phone out at the kerb does it, and
+   * requiring the owner would mean a renter who has the drill in their hands cannot start the clock.
+   * Who confirmed it is recorded, so a later disagreement has something to point at.
+   *
+   * `at` may be backdated up to seven days, because the confirmation usually happens after the
+   * event — the handover is at the door, the tap is on the bus home — and every deadline downstream
+   * runs from the real time, not the tap.
+   */
+  async confirmHandover(bookingId: string, userId: string, at?: Date, note?: string) {
+    const booking = await bookingRepo.findById(bookingId);
+    if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
+
+    const isParty = getId(booking.renter) === userId || getId(booking.owner) === userId;
+    if (!isParty) throw new AppError("Access denied", HTTP_STATUS.FORBIDDEN);
+
+    if (booking.handover?.at) {
+      throw new AppError("Handover was already confirmed for this booking", HTTP_STATUS.BAD_REQUEST);
+    }
+    if (!["accepted", "ready_for_handover"].includes(booking.status)) {
+      throw new AppError(
+        `A ${booking.status} booking cannot be handed over`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+    // Not a hard refusal: an owner who hands the item over before the money lands has taken a
+    // commercial risk, but refusing to record what physically happened would leave the booking
+    // permanently stuck and the renter holding the item with no record of it.
+    if (booking.paymentStatus !== "paid") {
+      logger.warn("Handover confirmed on a booking that is not paid", {
+        bookingId,
+        paymentStatus: booking.paymentStatus,
+      });
+    }
+
+    const actualAt = at ?? new Date();
+    const updated = await bookingRepo.updateStatus(bookingId, "active", {
+      "handover.at": actualAt,
+      "handover.confirmedBy": userId,
+      "handover.confirmedAt": new Date(),
+      ...(note ? { "handover.note": note } : {}),
+    } as Record<string, unknown>);
+
+    return withSignedBookingPhotos(updated);
+  }
+
+  /**
+   * Records that the item actually came back. **This starts the 24-hour inspection clock**, which is
+   * why the time matters rather than just the fact.
+   *
+   * Either party may confirm, for the same reason as handover. An early return is recorded as what
+   * it is — the inspection window runs from the real return time even when that is before the agreed
+   * end date — and it does **not** by itself refund anything: the specification is explicit that a
+   * voluntary early return creates no automatic refund, only the right to ask for one.
+   */
+  async confirmReturn(bookingId: string, userId: string, at?: Date, note?: string) {
+    const booking = await bookingRepo.findById(bookingId);
+    if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
+
+    const isParty = getId(booking.renter) === userId || getId(booking.owner) === userId;
+    if (!isParty) throw new AppError("Access denied", HTTP_STATUS.FORBIDDEN);
+
+    if (booking.returned?.at) {
+      throw new AppError("The return was already confirmed", HTTP_STATUS.BAD_REQUEST);
+    }
+    if (!["active", "awaiting_return"].includes(booking.status)) {
+      throw new AppError(
+        `A ${booking.status} booking cannot be returned`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const actualAt = at ?? new Date();
+    if (booking.handover?.at && actualAt < booking.handover.at) {
+      throw new AppError(
+        "The return time cannot be before the handover time",
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const updated = await bookingRepo.updateStatus(bookingId, "returned_awaiting_inspection", {
+      "returned.at": actualAt,
+      "returned.confirmedBy": userId,
+      "returned.confirmedAt": new Date(),
+      ...(note ? { "returned.note": note } : {}),
+    } as Record<string, unknown>);
+
+    return withSignedBookingPhotos(updated);
+  }
+
+  /**
+   * Contests a return time the other party recorded.
+   *
+   * The specification requires "a resolution process if the parties disagree on return time", and
+   * this is it: the disagreement is recorded against the booking for an administrator to settle. It
+   * deliberately does **not** move the recorded time — letting one party overwrite the other's
+   * account would make the record worth nothing, and the 24-hour claim window hangs off it.
+   *
+   * Only the party who did *not* confirm it may contest, and only once.
+   */
+  async disputeReturnTime(bookingId: string, userId: string, claimedAt: Date, reason: string) {
+    const booking = await bookingRepo.findById(bookingId);
+    if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
+
+    const isParty = getId(booking.renter) === userId || getId(booking.owner) === userId;
+    if (!isParty) throw new AppError("Access denied", HTTP_STATUS.FORBIDDEN);
+
+    if (!booking.returned?.at) {
+      throw new AppError("No return time has been recorded yet", HTTP_STATUS.BAD_REQUEST);
+    }
+    if (booking.returned.confirmedBy && getId(booking.returned.confirmedBy) === userId) {
+      throw new AppError(
+        "You recorded this return time yourself",
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+    if (booking.returned.disputed?.at) {
+      throw new AppError("This return time has already been contested", HTTP_STATUS.BAD_REQUEST);
+    }
+    if (booking.handover?.at && claimedAt < booking.handover.at) {
+      throw new AppError(
+        "The time you are claiming is before the item was handed over",
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const updated = await bookingRepo.updateById(bookingId, {
+      "returned.disputed.by": userId,
+      "returned.disputed.at": new Date(),
+      "returned.disputed.claimedAt": claimedAt,
+      "returned.disputed.reason": reason,
+    } as Record<string, unknown>);
+
+    const other =
+      getId(booking.renter) === userId ? getId(booking.owner) : getId(booking.renter);
+    notifyReturnTimeDisputed(other, bookingId, reason).catch(() => {});
 
     return withSignedBookingPhotos(updated);
   }

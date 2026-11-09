@@ -104,6 +104,42 @@ export class BookingController {
     } catch (err) { next(err); }
   }
 
+  async confirmHandover(req: Request, res: Response, next: NextFunction) {
+    try {
+      const booking = await bookingService.confirmHandover(
+        String(req.params.id),
+        req.user!.userId,
+        req.body.at ? new Date(req.body.at) : undefined,
+        req.body.note
+      );
+      sendSuccess(res, "Handover confirmed", booking);
+    } catch (err) { next(err); }
+  }
+
+  async confirmReturn(req: Request, res: Response, next: NextFunction) {
+    try {
+      const booking = await bookingService.confirmReturn(
+        String(req.params.id),
+        req.user!.userId,
+        req.body.at ? new Date(req.body.at) : undefined,
+        req.body.note
+      );
+      sendSuccess(res, "Return confirmed", booking);
+    } catch (err) { next(err); }
+  }
+
+  async disputeReturnTime(req: Request, res: Response, next: NextFunction) {
+    try {
+      const booking = await bookingService.disputeReturnTime(
+        String(req.params.id),
+        req.user!.userId,
+        new Date(req.body.claimedAt),
+        String(req.body.reason)
+      );
+      sendSuccess(res, "Return time contested", booking);
+    } catch (err) { next(err); }
+  }
+
   async uploadPrePhotos(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {

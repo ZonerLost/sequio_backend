@@ -7,6 +7,9 @@ import {
   createBookingSchema,
   declineBookingSchema,
   cancelBookingSchema,
+  confirmHandoverSchema,
+  confirmReturnSchema,
+  disputeReturnTimeSchema,
   bookingQuerySchema,
   quoteSchema,
 } from "../validators/booking.validator";
@@ -25,6 +28,13 @@ router.put("/:id/accept", ctrl.acceptBooking.bind(ctrl));
 router.put("/:id/decline", validate(declineBookingSchema), ctrl.declineBooking.bind(ctrl));
 router.put("/:id/cancel", validate(cancelBookingSchema), ctrl.cancelBooking.bind(ctrl));
 router.put("/:id/complete", ctrl.completeBooking.bind(ctrl));
+router.put("/:id/handover", validate(confirmHandoverSchema), ctrl.confirmHandover.bind(ctrl));
+router.put("/:id/return", validate(confirmReturnSchema), ctrl.confirmReturn.bind(ctrl));
+router.put(
+  "/:id/return/dispute",
+  validate(disputeReturnTimeSchema),
+  ctrl.disputeReturnTime.bind(ctrl)
+);
 router.post("/:id/pre-photos", upload.array("photos", 5), ctrl.uploadPrePhotos.bind(ctrl));
 router.post("/:id/post-photos", upload.array("photos", 5), ctrl.uploadPostPhotos.bind(ctrl));
 

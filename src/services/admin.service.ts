@@ -1,5 +1,6 @@
 import { UserModel } from "../models/user.model";
 import { getPresignedUrl } from "../helpers/s3.helper";
+import { recordMoneyEvent } from "../helpers/money-event.helper";
 import {
   withSignedBookingPhotos,
   withSignedBookingPhotosAll,
@@ -672,6 +673,20 @@ export class AdminService {
       },
       { new: true }
     );
+
+    await recordMoneyEvent({
+      bookingId: getId(payment.booking),
+      paymentId: String(payment._id),
+      type: "refund",
+      amountCents: Math.round(Number(payment.amount ?? 0) * 100),
+      balanceEffect: "out",
+      actor: { kind: "admin" },
+      reason,
+      stripeId: stripeRefundId,
+      // Keyed on the payment, matching the Stripe idempotency key a few lines up: one full refund
+      // per payment is all this endpoint can ever do.
+      idempotencyKey: `refund-${payment._id.toString()}`,
+    });
 
     // The booking carries payment state too, and leaving it on "paid" after the money went back
     // would be worse than not having the field: a client would keep hiding Pay Now on a booking

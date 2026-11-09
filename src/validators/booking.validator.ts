@@ -53,6 +53,52 @@ export const cancelBookingSchema = Joi.object({
   reason: Joi.string().max(500).optional(),
 });
 
+/**
+ * Confirming a handover or a return.
+ *
+ * `at` is optional and defaults to now. It exists because the confirmation often happens later than
+ * the event — the renter hands the drill back at the door and remembers to tap the button on the
+ * bus home — and every deadline downstream runs from the real time, not the tap.
+ *
+ * It cannot be in the future, and it cannot be more than 7 days ago: a plausible correction, not a
+ * free hand to rewrite history and reopen a closed claim window.
+ */
+const MAX_BACKDATE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const actualTimeSchema = Joi.date()
+  .max("now")
+  // Computed per request, not once at module load: a bound built from Date.now() at startup would
+  // drift further out of date every day the process stays up.
+  .custom((value, helpers) =>
+    new Date(value).getTime() < Date.now() - MAX_BACKDATE_MS
+      ? helpers.error("date.tooOld")
+      : value
+  )
+  .optional()
+  .messages({
+    "date.max": "The time cannot be in the future",
+    "date.tooOld": "The time cannot be more than 7 days ago — contact support to correct it",
+  });
+
+export const confirmHandoverSchema = Joi.object({
+  at: actualTimeSchema,
+  note: Joi.string().max(500).optional(),
+});
+
+export const confirmReturnSchema = Joi.object({
+  at: actualTimeSchema,
+  note: Joi.string().max(500).optional(),
+});
+
+/** Contesting a return time the other party recorded. */
+export const disputeReturnTimeSchema = Joi.object({
+  claimedAt: Joi.date().max("now").required().messages({
+    "date.max": "The time you are claiming cannot be in the future",
+    "any.required": "Say when you believe the item was actually returned",
+  }),
+  reason: Joi.string().min(3).max(500).required(),
+});
+
 export const bookingQuerySchema = Joi.object({
   status: Joi.string()
     .valid("pending", "accepted", "active", "completed", "declined", "cancelled")

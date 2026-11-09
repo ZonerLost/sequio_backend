@@ -35,6 +35,14 @@ import { ENV } from "../config/env";
  *    job that silently does nothing.
  * 4. **Keep it short.** A job holding its lease for minutes blocks nothing else, but it delays its
  *    own next run and makes a dead instance take longer to detect.
+ * 5. **Stub the money, never the job.** There is no separate test database — a developer machine
+ *    points at the same Atlas cluster as production — so a test that calls `job.run()` runs it for
+ *    real. That is fine and intended for a job that only touches Mongo: `expire-promotions` cleared
+ *    the genuinely overdue production boosts the first time its test ran, which is exactly what it
+ *    is for. It is **not** fine for a job that calls Stripe. Releasing a deposit or paying an owner
+ *    from a test script moves real money. Those jobs must have the Stripe call stubbed at the HTTP
+ *    boundary, the way `payouts-run.cjs` and `charging-run.cjs` already do — stub the external call,
+ *    never skip the job, or the test stops testing the thing that matters.
  */
 
 export interface JobResult {

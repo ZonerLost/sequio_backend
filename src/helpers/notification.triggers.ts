@@ -68,6 +68,28 @@ export async function notifyBookingCancelled(
  * Both parties are told, and the reason is included: a cancellation nobody asked for is confusing
  * enough without it being unexplained, and the renter needs to know a booking they paid for is off.
  */
+/**
+ * Tells the other party that the recorded return time is being contested.
+ *
+ * Worth a notification rather than a quiet flag: the 24-hour inspection window, the deposit release
+ * and the claim deadline all run from that timestamp, so someone disagreeing with it is time-critical
+ * for both of them.
+ */
+export async function notifyReturnTimeDisputed(
+  userId: string,
+  bookingId: string,
+  reason: string
+): Promise<void> {
+  if (!userId) return;
+  await notificationService.send({
+    userId,
+    type: "return_time_disputed",
+    title: "Return time contested",
+    body: `The other party disagrees with the recorded return time: ${reason}`,
+    data: { bookingId, screen: "booking_detail" },
+  });
+}
+
 export async function notifyBookingCancelledByAdmin(
   userIds: string[],
   itemTitle: string,

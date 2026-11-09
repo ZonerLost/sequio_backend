@@ -310,6 +310,104 @@
 
 /**
  * @swagger
+ * /bookings/{id}/handover:
+ *   put:
+ *     summary: Confirm the item actually changed hands
+ *     description: >
+ *       Either party may confirm — whoever has their phone out at the kerb. Moves the booking to
+ *       `active`.
+ *
+ *
+ *       `at` is optional and defaults to now. It may be backdated up to 7 days, because the
+ *       confirmation usually happens after the event; every deadline downstream runs from the real
+ *       time, not the tap. A future time, or one more than 7 days ago, is refused.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               at: { type: string, format: date-time }
+ *               note: { type: string, maxLength: 500 }
+ *     responses:
+ *       200: { description: Handover confirmed }
+ *       400: { description: Already confirmed, or the booking is not in a state that can be handed over }
+ *       403: { description: Not a party to this booking }
+ *
+ * /bookings/{id}/return:
+ *   put:
+ *     summary: Confirm the item actually came back
+ *     description: >
+ *       Either party may confirm. Moves the booking to `returned_awaiting_inspection` and **starts
+ *       the 24-hour inspection window**, which is why the time matters rather than just the fact.
+ *
+ *
+ *       An early return is recorded as what it is — the window runs from the real return time even
+ *       when that is before the agreed end date. It does **not** refund anything by itself: a
+ *       voluntary early return creates no automatic refund, only the right to ask for one.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               at: { type: string, format: date-time }
+ *               note: { type: string, maxLength: 500 }
+ *     responses:
+ *       200: { description: Return confirmed }
+ *       400: { description: Already confirmed, never handed over, or a time before the handover }
+ *       403: { description: Not a party to this booking }
+ *
+ * /bookings/{id}/return/dispute:
+ *   put:
+ *     summary: Contest the recorded return time
+ *     description: >
+ *       The resolution process for when the parties disagree about when the item came back. Only
+ *       the party who did **not** record the time may contest it, and only once.
+ *
+ *
+ *       It deliberately does not change the recorded time — letting one party overwrite the other
+ *       would make the record worthless, and the claim window and deposit release both hang off it.
+ *       The disagreement is stored for an administrator to settle, and the other party is notified.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [claimedAt, reason]
+ *             properties:
+ *               claimedAt: { type: string, format: date-time }
+ *               reason: { type: string, minLength: 3, maxLength: 500 }
+ *     responses:
+ *       200: { description: Contested }
+ *       400: { description: No return recorded, already contested, or you recorded it yourself }
+ *       403: { description: Not a party to this booking }
+ *
  * /bookings/{id}/pre-photos:
  *   post:
  *     summary: Upload pre-rental photos (owner only)

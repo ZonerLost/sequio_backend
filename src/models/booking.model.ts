@@ -1,4 +1,80 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Schema, Document, Types } from "mongoose";
+
+/**
+ * The booking lifecycle.
+ *
+ * Three states are new in November 2026, covering the part of a rental that nothing used to model:
+ * the item changing hands, coming back, and sitting with the owner while they inspect it. Every
+ * deadline in the new specification hangs off that middle section — the 24-hour claim window, the
+ * deposit release and the owner's payout.
+ *
+ *   pending
+ *     -> accepted                      owner agrees
+ *     -> declined                      owner refuses
+ *   accepted
+ *     -> ready_for_handover            the rental period has arrived and it is paid for
+ *     -> cancelled
+ *   ready_for_handover
+ *     -> active                        handover confirmed; the renter has the item
+ *   active
+ *     -> awaiting_return               the rental period has ended, item not back yet
+ *     -> returned_awaiting_inspection  returned early, or straight back on time
+ *   awaiting_return
+ *     -> returned_awaiting_inspection  return confirmed; the 24-hour clock starts
+ *   returned_awaiting_inspection
+ *     -> completed                     owner closed it, or 24 hours passed with no claim
+ *
+ * **The client's document calls `accepted` "Confirmed" and omits `declined`.** Its list is headed
+ * "sample booking states", and renaming `accepted` would break every deployed copy of the Flutter
+ * app and the admin panel, which filter on these strings — a breaking change across three codebases
+ * to relabel one value. So the lifecycle matches their specification and the vocabulary does not.
+ * Map `accepted` to "Confirmed" in the user interface, not in the database.
+ */
+export const BOOKING_STATUSES = [
+  "pending",
+  "accepted",
+  "ready_for_handover",
+  "active",
+  "awaiting_return",
+  "returned_awaiting_inspection",
+  "completed",
+  "declined",
+  "cancelled",
+] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+
+/** Statuses in which the renter still has the item, or is about to. Used for conflict checks. */
+export const LIVE_BOOKING_STATUSES: BookingStatus[] = [
+  "pending",
+  "accepted",
+  "ready_for_handover",
+  "active",
+  "awaiting_return",
+  "returned_awaiting_inspection",
+];
+
+/**
+ * Where a booking's money has got to, tracked **independently of the booking status** because the
+ * specification requires it: a cancelled booking can still be awaiting a refund, and a completed one
+ * can still be waiting for its payout to land.
+ *
+ * `unpaid` is the client's "Pending"; `failed` is ours and has no equivalent in their list, which
+ * does not mean a card can never be declined.
+ *
+ * The three payout states are written by the Phase 2 work: the owner is paid when the rental period
+ * ends, not when the renter pays, so there is a real gap between "paid" and "paid out" to represent.
+ */
+export const PAYMENT_LIFECYCLE_STATUSES = [
+  "unpaid",
+  "paid",
+  "failed",
+  "payout_pending",
+  "payout_initiated",
+  "paid_out",
+  "partially_refunded",
+  "refunded",
+] as const;
+export type PaymentLifecycleStatus = (typeof PAYMENT_LIFECYCLE_STATUSES)[number];
 
 export interface IBooking extends Document {
   _id: mongoose.Types.ObjectId;
@@ -62,7 +138,7 @@ export interface IBooking extends Document {
     platform?: { revenue: number; taxCollected: number };
   };
   discountCode?: string;
-  status: "pending" | "accepted" | "active" | "completed" | "declined" | "cancelled";
+  status: BookingStatus;
   /**
    * Whether this booking has been paid for. Denormalised onto the booking on purpose.
    *
@@ -75,7 +151,25 @@ export interface IBooking extends Document {
    * Written by the Stripe webhook, which is authoritative, and by the record-payment path. Kept here
    * rather than derived from the Payment collection so listing bookings stays one query.
    */
-  paymentStatus: "unpaid" | "paid" | "failed" | "refunded";
+  paymentStatus: PaymentLifecycleStatus;
+  handover?: {
+    at?: Date;
+    confirmedBy?: Types.ObjectId;
+    confirmedAt?: Date;
+    note?: string;
+  };
+  returned?: {
+    at?: Date;
+    confirmedBy?: Types.ObjectId;
+    confirmedAt?: Date;
+    note?: string;
+    disputed?: {
+      by?: Types.ObjectId;
+      at?: Date;
+      claimedAt?: Date;
+      reason?: string;
+    };
+  };
   preRentalPhotos: string[];
   postRentalPhotos: string[];
   declineReason?: string;
@@ -160,18 +254,48 @@ const BookingSchema = new Schema<IBooking>(
     discountCode: String,
     status: {
       type: String,
-      enum: ["pending", "accepted", "active", "completed", "declined", "cancelled"],
+      enum: BOOKING_STATUSES,
       default: "pending",
     },
     // Bookings written before 2026-10-07 have no value here. A reader must treat a missing
     // paymentStatus as "unpaid" rather than assuming the default was applied retroactively.
     paymentStatus: {
       type: String,
-      enum: ["unpaid", "paid", "failed", "refunded"],
+      enum: PAYMENT_LIFECYCLE_STATUSES,
       default: "unpaid",
     },
     preRentalPhotos: [{ type: String }],
     postRentalPhotos: [{ type: String }],
+    /**
+     * When the item actually changed hands, and who said so.
+     *
+     * Not the same thing as `startDate`, which is what was agreed. Every downstream deadline is
+     * measured from what actually happened: the 24-hour inspection window runs from `returnedAt`,
+     * and the owner's payout is owed once the rental is genuinely over.
+     *
+     * Either party may confirm — whoever has the phone in their hand at the kerb — and the other may
+     * contest the recorded time, which is the "resolution process if the parties disagree on return
+     * time" the specification requires.
+     */
+    handover: {
+      at: { type: Date },
+      confirmedBy: { type: Schema.Types.ObjectId, ref: "User" },
+      confirmedAt: { type: Date },
+      note: { type: String, maxlength: 500 },
+    },
+    returned: {
+      at: { type: Date },
+      confirmedBy: { type: Schema.Types.ObjectId, ref: "User" },
+      confirmedAt: { type: Date },
+      note: { type: String, maxlength: 500 },
+      /** Set when the other party says the recorded time is wrong. An admin settles it. */
+      disputed: {
+        by: { type: Schema.Types.ObjectId, ref: "User" },
+        at: { type: Date },
+        claimedAt: { type: Date },
+        reason: { type: String, maxlength: 500 },
+      },
+    },
     declineReason: String,
     cancelReason: String,
     acceptedAt: Date,
