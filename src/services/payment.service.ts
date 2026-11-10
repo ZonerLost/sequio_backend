@@ -24,7 +24,7 @@ const priceBreakdownCents = (pricing: Record<string, any> | undefined) => {
 import { HTTP_STATUS } from "../config/constants";
 import { PRICING, ATUSSA_FEE_EXPLAINER, activeModel } from "../helpers/pricing.helper";
 import { ENV } from "../config/env";
-import { PaymentMethod } from "../models/payment.model";
+import { PaymentMethod, ChargeModel } from "../models/payment.model";
 import { buildPagination } from "../helpers/pagination.helper";
 import { notificationService } from "../services/notification.service";
 import {
@@ -139,6 +139,25 @@ export class PaymentService {
     // taxes Atussa remits. Matches the invariant asserted in pricing.helper.ts.
     const applicationFeeCents = Math.max(0, totalAmountCents - ownerPayoutCents);
 
+    /**
+     * Which charge model, and therefore when the owner is paid.
+     *
+     * `destination` is a destination charge: the owner's share leaves Atussa at capture, which is
+     * what is live today and why owner cancellation has to reverse a transfer the owner may already
+     * have withdrawn.
+     *
+     * `platform` charges Atussa's own balance and leaves the owner's share there until the
+     * `release-owner-payouts` job moves it at the end of the rental — which is the client's
+     * requirement, and what makes every refund path clean.
+     *
+     * The owner's Stripe account is still required under both. Under `platform` it is not needed
+     * until the payout, but refusing here means an owner finds out before a renter has paid rather
+     * than a day after the rental ended.
+     */
+    // Cast at the use site, like `activeModel()` does for PRICING_MODEL: ENV is a plain object
+    // literal, so its string fields widen to `string`.
+    const chargeModel = ENV.STRIPE_CHARGE_MODEL as ChargeModel;
+
     // If an existing pending payment has a client_secret, check if it's still usable
     let pending = await paymentRepo.findPendingByBooking(bookingId);
     let replacing: string | undefined;
@@ -187,18 +206,36 @@ export class PaymentService {
     const intent = await createPaymentIntent({
       amount: totalAmountCents,
       currency: "cad",
-      destinationAccountId: ownerStripeAccountId,
-      applicationFeeAmount: applicationFeeCents,
+      // Both omitted under `platform`: naming a destination is what makes Stripe move the money at
+      // capture, which is precisely what this model exists to avoid.
+      ...(chargeModel === "destination"
+        ? {
+            destinationAccountId: ownerStripeAccountId,
+            applicationFeeAmount: applicationFeeCents,
+          }
+        : {}),
+      // Ties this charge to the transfer that will follow it, so the two are one story in Stripe's
+      // dashboard rather than two unrelated rows.
+      transferGroup: bookingId,
       metadata: {
         bookingId,
         payerId,
         ownerId: getId(booking.owner),
+        chargeModel,
+        ownerPayoutCents: String(ownerPayoutCents),
       },
       // Keyed per attempt: a plain booking+amount key would, after an intent was canceled, replay
       // Stripe's original response for 24h and hand the renter back the dead intent forever.
       idempotencyKey: `pi-${bookingId}-${totalAmountCents}-${replacing ?? "first"}`,
     });
 
+    /**
+     * `chargeModel` is recorded on the row, not inferred later from the environment variable.
+     *
+     * The variable can be flipped between a charge and its payout, and a row that read it at payout
+     * time would then either pay an owner who was already paid at capture, or never pay one who was
+     * not. What charged this money is a fact about this payment.
+     */
     if (pending) {
       pending = (await paymentRepo.updateStatus(pending._id.toString(), "pending", {
         stripePaymentIntentId: intent.id,
@@ -206,6 +243,7 @@ export class PaymentService {
         amount: booking.pricing.totalAmount,
         currency: "CAD",
         method: "credit_card",
+        chargeModel,
       })) as any;
     } else {
       pending = await paymentRepo.create({
@@ -218,6 +256,7 @@ export class PaymentService {
         status: "pending",
         stripePaymentIntentId: intent.id,
         stripeClientSecret: intent.client_secret,
+        chargeModel,
       });
     }
 
@@ -264,6 +303,8 @@ export class PaymentService {
     let method = data.method;
     let savedMethodId: mongoose.Types.ObjectId | undefined;
     let stripePaymentIntentId = data.paymentIntentId;
+    /** Kept past the verification block: the charge id on it is what a later transfer needs. */
+    let verifiedIntent: StripePaymentIntent | undefined;
 
     if (data.paymentIntentId) {
       // Fail closed. Without a key this used to skip verification and write the payment as
@@ -274,17 +315,18 @@ export class PaymentService {
           HTTP_STATUS.SERVICE_UNAVAILABLE
         );
       }
-      {
-        const intent = await getPaymentIntent(data.paymentIntentId);
-        if (intent.status !== "succeeded") {
-          throw new AppError(
-            `Stripe payment has not succeeded yet (status: "${intent.status}")`,
-            HTTP_STATUS.BAD_REQUEST
-          );
-        }
-        if (intent.metadata?.bookingId && intent.metadata.bookingId !== data.bookingId) {
-          throw new AppError("Payment intent does not belong to this booking", HTTP_STATUS.BAD_REQUEST);
-        }
+      verifiedIntent = await getPaymentIntent(data.paymentIntentId);
+      if (verifiedIntent.status !== "succeeded") {
+        throw new AppError(
+          `Stripe payment has not succeeded yet (status: "${verifiedIntent.status}")`,
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+      if (
+        verifiedIntent.metadata?.bookingId &&
+        verifiedIntent.metadata.bookingId !== data.bookingId
+      ) {
+        throw new AppError("Payment intent does not belong to this booking", HTTP_STATUS.BAD_REQUEST);
       }
       method = method || "credit_card";
     }
@@ -322,6 +364,7 @@ export class PaymentService {
           method,
           stripePaymentIntentId: stripePaymentIntentId || pending.stripePaymentIntentId,
           externalReference: data.externalReference || stripePaymentIntentId || pending.stripePaymentIntentId,
+          ...(verifiedIntent?.latest_charge ? { stripeChargeId: verifiedIntent.latest_charge } : {}),
         });
       } else {
         payment = await paymentRepo.create({
@@ -335,6 +378,7 @@ export class PaymentService {
           status: "completed",
           stripePaymentIntentId,
           externalReference: data.externalReference || stripePaymentIntentId,
+          ...(verifiedIntent?.latest_charge ? { stripeChargeId: verifiedIntent.latest_charge } : {}),
         });
       }
     } catch (err) {
@@ -392,6 +436,7 @@ export class PaymentService {
       await paymentRepo.updateStatus(payment._id.toString(), "completed", {
         stripePaymentIntentId: intent.id,
         externalReference: intent.id,
+        ...(intent.latest_charge ? { stripeChargeId: intent.latest_charge } : {}),
       });
 
       // The booking has to carry this too, or a client cannot tell a paid booking from an unpaid one
@@ -430,6 +475,13 @@ export class PaymentService {
             status: "completed",
             stripePaymentIntentId: intent.id,
             externalReference: intent.id,
+            // The charge model came from the intent's own metadata, so a webhook that creates the
+            // row from scratch still records which model charged it. Without this the payout job
+            // would read it as a destination charge and never pay the owner.
+            ...(intent.metadata?.chargeModel === "platform"
+              ? { chargeModel: "platform" as const }
+              : {}),
+            ...(intent.latest_charge ? { stripeChargeId: intent.latest_charge } : {}),
           });
 
           await bookingRepo.setPaymentStatus(bookingId, "paid");

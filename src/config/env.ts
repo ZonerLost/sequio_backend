@@ -81,6 +81,37 @@ export const ENV = {
   SCHEDULER_TICK_MS: Number(process.env.SCHEDULER_TICK_MS) || 60_000,
 
   /**
+   * How the renter's card is charged, and therefore when the owner is paid.
+   *
+   * - `destination` (the default, and what is live): a destination charge. The owner's share
+   *   transfers the instant the renter pays, because that is when a destination charge settles.
+   * - `platform`: separate charges and transfers. The money lands in Atussa's balance and the
+   *   `release-owner-payouts` job transfers the owner's share when the rental is over.
+   *
+   * `platform` is what the client's requirement needs — the owner paid at the end of the rental —
+   * and it is what makes every refund path clean, because until the transfer runs nothing has left
+   * Atussa and there is nothing to claw back from an owner who may have withdrawn it.
+   *
+   * **It defaults to `destination` so that deploying this changed nothing.** Do not switch it until
+   * one owner has reached `active` on Stripe onboarding and a real transfer has been verified
+   * end to end: no owner has completed onboarding yet, so the `transfers` capability is unproven.
+   * Switching is safe to do per-environment and does not rewrite anything already charged — a
+   * payment records which model charged it, and the payout job only ever acts on `platform` rows.
+   */
+  STRIPE_CHARGE_MODEL: process.env.STRIPE_CHARGE_MODEL === "platform" ? "platform" : "destination",
+
+  /**
+   * How long after a rental ends before the owner's share is transferred.
+   *
+   * 24 hours, to match the claim window the client specified: the owner has 24 hours from the actual
+   * return to open a claim, and paying them out before that window closes would mean reversing a
+   * transfer to fund a deposit capture. Phase 4 has not been built, so nothing opens a claim yet —
+   * but the hold is what makes this job correct when it is, rather than something to remember to
+   * add later.
+   */
+  OWNER_PAYOUT_HOLD_HOURS: Number(process.env.OWNER_PAYOUT_HOLD_HOURS) || 24,
+
+  /**
    * Geocoding: turning an address into coordinates.
    *
    * Default provider is OpenStreetMap Nominatim, which needs no key and is the same data the

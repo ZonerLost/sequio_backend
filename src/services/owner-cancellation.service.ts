@@ -15,6 +15,8 @@ import { getId } from "../helpers/id.helper";
 import { logger } from "../config/logger";
 import { uploadToS3, signUrls } from "../helpers/s3.helper";
 import { createRefund, stripeConfigured } from "../helpers/stripe.helper";
+import { chargeModelOf } from "../models/payment.model";
+import { OwnerPayoutService } from "./owner-payout.service";
 import { recordMoneyEvent } from "../helpers/money-event.helper";
 import {
   notifyBookingCancelledByOwner,
@@ -151,7 +153,18 @@ export class OwnerCancellationService {
     cancellationId: string,
     reason: string
   ): Promise<{ attempted: boolean; succeeded: boolean }> {
-    if (booking.paymentStatus !== "paid") {
+    /**
+     * Every state in which the renter's money has been taken.
+     *
+     * This was `!== "paid"`, which was complete until the payout job existed. Under separate charges
+     * a paid booking moves to `paid_out` once the owner is paid, so checking only for `"paid"`
+     * would make a cancellation after payout skip the refund **silently** — the booking cancelled,
+     * the strike recorded, and the renter simply never refunded. A cancellation is not supposed to
+     * be reachable after the item has gone back, but "not supposed to be" is not a guarantee, and
+     * the failure here is one nobody would notice until a renter complained.
+     */
+    const PAID_STATUSES = ["paid", "payout_pending", "payout_initiated", "paid_out"];
+    if (!PAID_STATUSES.includes(String(booking.paymentStatus))) {
       return { attempted: false, succeeded: false };
     }
 
@@ -170,17 +183,57 @@ export class OwnerCancellationService {
     let error: string | undefined;
     let stripeRefundId: string | undefined;
 
+    /**
+     * `reverse_transfer` and `refund_application_fee` are **destination-charge parameters** and
+     * mean nothing on a platform charge: there is no application fee, and the transfer — if one
+     * happened at all — is a separate object the refund does not touch.
+     *
+     * So under the platform model the refund gives the renter their money back and that is all. Any
+     * clawback from the owner is the explicit reversal below. Stripe's documentation is unambiguous
+     * that a refund does not reverse a transfer; sending the flags anyway would be a silent no-op
+     * that reads, in this file, exactly like the owner's share coming back.
+     */
+    const model = chargeModelOf(payment);
+
     try {
       if (payment.stripePaymentIntentId && stripeConfigured()) {
         const refund = await createRefund({
           paymentIntentId: payment.stripePaymentIntentId,
-          reverseTransfer: true,
-          refundApplicationFee: true,
+          ...(model === "destination"
+            ? { reverseTransfer: true, refundApplicationFee: true }
+            : {}),
           reason: "requested_by_customer",
           idempotencyKey: `owner-cancel-${payment._id.toString()}`,
         });
         stripeRefundId = refund.id;
       }
+
+      /**
+       * Claw the owner's share back, but only if it has already gone out.
+       *
+       * **In the normal case this does nothing, and that is the whole point of Phase 2c.** An owner
+       * cancels before the rental has ended, the payout job has not run, and no money has left
+       * Atussa — so there is nothing to reverse and nothing that can fail.
+       *
+       * When the payout *has* gone out, the reversal can fail because the owner has withdrawn. That
+       * leaves a real debt, recorded as `reversalOutstanding`, and it is deliberately **not** made
+       * fatal here: the renter's refund already succeeded, and failing the request would leave the
+       * booking live and the renter expecting an item nobody will deliver.
+       */
+      if (model === "platform" && payment.stripeTransferId && stripeConfigured()) {
+        const reversal = await new OwnerPayoutService().reverse(payment._id.toString(), {
+          reason: `Owner cancellation: ${reason}`,
+        });
+        if (!reversal.reversed) {
+          logger.error("Owner payout could not be clawed back after an owner cancellation", {
+            bookingId: booking._id.toString(),
+            paymentId: payment._id.toString(),
+            outstandingCents: reversal.amountCents,
+            message: reversal.error,
+          });
+        }
+      }
+
       succeeded = true;
     } catch (err) {
       error = (err as Error).message;

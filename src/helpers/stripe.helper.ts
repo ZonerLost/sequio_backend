@@ -297,11 +297,117 @@ export interface StripeRefund {
   charge?: string;
 }
 
+export interface StripeTransfer {
+  id: string;
+  object: "transfer";
+  amount: number;
+  currency: string;
+  destination: string;
+  /** Null when the transfer was funded from the available balance rather than a named charge. */
+  balance_transaction?: string | null;
+  source_transaction?: string | null;
+  transfer_group?: string | null;
+  reversed?: boolean;
+  amount_reversed?: number;
+  metadata?: Record<string, string>;
+}
+
+export interface StripeTransferReversal {
+  id: string;
+  object: "transfer_reversal";
+  amount: number;
+  currency: string;
+  transfer: string;
+}
+
+/**
+ * Moves the owner's share from Atussa's balance to their connected account.
+ *
+ * This is the second half of **separate charges and transfers**: the renter's card is charged to the
+ * platform, and this runs later, when the rental is over. A destination charge cannot do that — its
+ * transfer happens at capture, which is the whole reason this exists.
+ *
+ * ## Always pass `sourceTransaction`
+ *
+ * It is the charge the money came from, and it is what makes the timing safe. Without it a transfer
+ * draws on Atussa's **available** balance and is rejected outright if that balance is short — which
+ * it will be, because card funds sit pending for days and automatic payouts sweep the rest. With it,
+ * the transfer is tied to that charge and simply waits for those funds to settle; Stripe accepts it
+ * against a pending payment. Verified against Stripe's separate-charges documentation 2026-11-10.
+ *
+ * So the failure mode without it is not "it errors sometimes" — it is "every payout fails until
+ * someone tops up the platform balance", which looks like a Stripe outage and is not one.
+ */
+export const createTransfer = async (params: {
+  amount: number;
+  currency: string;
+  destination: string;
+  /** The charge id (`ch_…`) the funds came from. See above — effectively mandatory. */
+  sourceTransaction?: string;
+  /** Groups the charge and its transfer in Stripe's dashboard. Use the booking id. */
+  transferGroup?: string;
+  description?: string;
+  metadata?: Record<string, string>;
+  idempotencyKey?: string;
+}): Promise<StripeTransfer> => {
+  const payload: Record<string, unknown> = {
+    amount: params.amount,
+    currency: params.currency.toLowerCase(),
+    destination: params.destination,
+  };
+
+  if (params.sourceTransaction) payload.source_transaction = params.sourceTransaction;
+  if (params.transferGroup) payload.transfer_group = params.transferGroup;
+  if (params.description) payload.description = params.description;
+  if (params.metadata) payload.metadata = params.metadata;
+
+  return stripeRequest<StripeTransfer>("POST", "/transfers", payload, params.idempotencyKey);
+};
+
+/**
+ * Claws a transfer back from a connected account.
+ *
+ * **Under separate charges and transfers a refund does not reverse a transfer.** That is the single
+ * most consequential difference from the destination-charge flow, where `reverse_transfer: true` on
+ * the refund did it in one call. Refunding the renter now leaves the owner's share where it is
+ * unless this is called as well.
+ *
+ * And it can fail: a reversal only works while the owner's balance can cover it. If they have
+ * withdrawn, this returns an error and the shortfall is a real debt someone has to chase — which is
+ * exactly the situation that paying owners at the *end* of a rental is designed to avoid. The
+ * cancellation path therefore reverses only when the payout has already gone out, and in the normal
+ * case there is nothing to reverse because nothing has left Atussa.
+ */
+export const reverseTransfer = async (params: {
+  transferId: string;
+  /** Omit to reverse the whole transfer. */
+  amount?: number;
+  metadata?: Record<string, string>;
+  idempotencyKey?: string;
+}): Promise<StripeTransferReversal> => {
+  const payload: Record<string, unknown> = {};
+  if (params.amount !== undefined) payload.amount = params.amount;
+  if (params.metadata) payload.metadata = params.metadata;
+
+  return stripeRequest<StripeTransferReversal>(
+    "POST",
+    `/transfers/${params.transferId}/reversals`,
+    payload,
+    params.idempotencyKey
+  );
+};
+
 export const createPaymentIntent = async (params: {
   amount: number;
   currency: string;
+  /**
+   * Set only for a **destination charge**, where the owner's share moves at capture. Leave unset for
+   * the separate-charges model, which pays the owner later through `createTransfer`.
+   */
   destinationAccountId?: string;
   applicationFeeAmount?: number;
+  /** Ties this charge to the transfer that will follow it. The booking id. */
+  transferGroup?: string;
   metadata?: Record<string, string>;
   idempotencyKey?: string;
 }): Promise<StripePaymentIntent> => {
@@ -310,6 +416,8 @@ export const createPaymentIntent = async (params: {
     currency: params.currency.toLowerCase(),
     payment_method_types: ["card"],
   };
+
+  if (params.transferGroup) payload.transfer_group = params.transferGroup;
 
   if (params.destinationAccountId) {
     payload.transfer_data = { destination: params.destinationAccountId };

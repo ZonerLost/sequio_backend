@@ -1,6 +1,20 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export type PaymentStatus = "pending" | "completed" | "failed" | "refunded";
+
+/**
+ * How the renter's card was charged, which decides when and how the owner gets paid.
+ *
+ * - `destination`: a destination charge. The owner's share transferred at capture — there is
+ *   nothing left to pay out, and a refund reverses it with `reverse_transfer`.
+ * - `platform`: separate charges and transfers. The money is in Atussa's balance and the owner is
+ *   paid later by the `release-owner-payouts` job. A refund here does **not** reverse anything.
+ *
+ * **A missing value means `destination`.** Every payment written before November 2026 was a
+ * destination charge, and a schema default applies to new documents only (DO-NOT #13). Read it with
+ * `chargeModelOf()` and never filter on `{ chargeModel: "destination" }`.
+ */
+export type ChargeModel = "destination" | "platform";
 export type PaymentMethod = "apple_pay" | "google_pay" | "credit_card" | "debit_card";
 
 export interface IPaymentMethodCard {
@@ -40,9 +54,36 @@ export interface IPayment extends Document {
   stripeClientSecret?: string;
   stripeTransferId?: string;
   stripeRefundId?: string;
+
+  /** Which charge model moved this money. Absent means `destination` — see ChargeModel. */
+  chargeModel?: ChargeModel;
+  /** The charge the funds came from, needed as a transfer's `source_transaction`. */
+  stripeChargeId?: string;
+  /**
+   * Claimed by the payout job before it calls Stripe, so a retry inside one run cannot transfer
+   * twice. Set back to null if the attempt fails, which is what lets the next tick retry.
+   */
+  payoutInitiatedAt?: Date | null;
+  /** When the transfer to the owner actually succeeded. */
+  payoutAt?: Date;
+  /** The last payout failure, kept so a stuck payout is visible rather than silent. */
+  payoutError?: string;
+  payoutAttempts?: number;
+  /** Set when a transfer was clawed back — owner cancellation after the payout had gone out. */
+  transferReversedAt?: Date;
+  /**
+   * Money that should have come back from the owner and did not, because their balance could not
+   * cover the reversal. A real debt for support to chase, not a logging detail.
+   */
+  reversalOutstanding?: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
+
+/** A missing `chargeModel` means the destination charge that predates the field. */
+export const chargeModelOf = (payment: { chargeModel?: ChargeModel } | null | undefined): ChargeModel =>
+  payment?.chargeModel === "platform" ? "platform" : "destination";
 
 const SavedPaymentMethodSchema = new Schema<ISavedPaymentMethod>(
   {
@@ -90,6 +131,17 @@ const PaymentSchema = new Schema<IPayment>(
     stripeClientSecret: { type: String },
     stripeTransferId: { type: String },
     stripeRefundId: { type: String },
+
+    // Deliberately no schema default on chargeModel: a default would apply to new documents only
+    // and would tell you nothing about the thousands that predate it. Absent means destination.
+    chargeModel: { type: String, enum: ["destination", "platform"] },
+    stripeChargeId: { type: String },
+    payoutInitiatedAt: { type: Date, default: null },
+    payoutAt: { type: Date },
+    payoutError: { type: String },
+    payoutAttempts: { type: Number, default: 0 },
+    transferReversedAt: { type: Date },
+    reversalOutstanding: { type: Number },
   },
   { timestamps: true }
 );
@@ -104,6 +156,14 @@ PaymentSchema.index(
   { booking: 1 },
   { unique: true, partialFilterExpression: { status: "completed" }, name: "one_completed_per_booking" }
 );
+/**
+ * The payout job's query: completed platform charges with no transfer yet.
+ *
+ * Sparse on `payoutAt` would not help — the rows it wants are precisely the ones where it is
+ * absent. This indexes what the job actually filters on.
+ */
+PaymentSchema.index({ status: 1, chargeModel: 1, payoutAt: 1 });
+
 SavedPaymentMethodSchema.index({ user: 1 });
 
 export const PaymentModel = mongoose.model<IPayment>("Payment", PaymentSchema);
