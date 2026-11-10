@@ -1,12 +1,156 @@
 import { Request, Response, NextFunction } from "express";
 import { AdminService } from "../services/admin.service";
 import { OwnerCancellationService } from "../services/owner-cancellation.service";
-import { sendSuccess } from "../helpers/response.helper";
+import { CatalogService } from "../services/catalog.service";
+import { sendSuccess, sendCreated } from "../helpers/response.helper";
 
 const adminService = new AdminService();
 const ownerCancellationService = new OwnerCancellationService();
+const catalogService = new CatalogService();
+
+/** Joi coerces "true"/"false" on a query string; anything else means the filter was not sent. */
+const asBool = (v: unknown): boolean | undefined =>
+  v === true || v === "true" ? true : v === false || v === "false" ? false : undefined;
 
 export class AdminController {
+  // ── Users ─────────────────────────────────────────────────
+
+  // ── The rental catalogue ──────────────────────────────────
+  // The admin dictionary: the half of the Smart Rental Catalog that lets the client add a synonym,
+  // rename a category or prohibit an item type **without releasing a new app version**.
+
+  async getCatalogTree(_req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, "Catalog retrieved", {
+        tree: await catalogService.tree(),
+        aliasKinds: catalogService.aliasKinds(),
+      });
+    } catch (err) { next(err); }
+  }
+
+  async createCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const node = await catalogService.createNode("category", req.body);
+      sendCreated(res, "Category created", node);
+    } catch (err) { next(err); }
+  }
+
+  async updateCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await catalogService.updateNode("category", String(req.params.slug), req.body);
+      sendSuccess(res, "Category updated", result);
+    } catch (err) { next(err); }
+  }
+
+  async createSubcategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const node = await catalogService.createNode("subcategory", req.body);
+      sendCreated(res, "Subcategory created", node);
+    } catch (err) { next(err); }
+  }
+
+  async updateSubcategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await catalogService.updateNode("subcategory", String(req.params.slug), req.body);
+      sendSuccess(res, "Subcategory updated", result);
+    } catch (err) { next(err); }
+  }
+
+  async createItemType(req: Request, res: Response, next: NextFunction) {
+    try {
+      const node = await catalogService.createNode("itemType", req.body);
+      sendCreated(res, "Item type created", node);
+    } catch (err) { next(err); }
+  }
+
+  async updateItemType(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await catalogService.updateNode("itemType", String(req.params.slug), req.body);
+      sendSuccess(res, "Item type updated", result);
+    } catch (err) { next(err); }
+  }
+
+  async listAliases(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await catalogService.listAliases({
+        search: req.query.search ? String(req.query.search) : undefined,
+        itemType: req.query.itemType ? String(req.query.itemType) : undefined,
+        kind: req.query.kind ? String(req.query.kind) : undefined,
+        approved: asBool(req.query.approved),
+        page: Number(req.query.page) || 1,
+        limit: Number(req.query.limit) || 50,
+      });
+      sendSuccess(res, "Aliases retrieved", result.aliases, 200, {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / result.limit),
+        hasNext: result.page * result.limit < result.total,
+        hasPrev: result.page > 1,
+      });
+    } catch (err) { next(err); }
+  }
+
+  async createAlias(req: Request, res: Response, next: NextFunction) {
+    try {
+      const alias = await catalogService.createAlias({
+        ...req.body,
+        addedBy: req.user?.userId,
+      });
+      sendCreated(res, "Alias added — live on the next request, with no app release", alias);
+    } catch (err) { next(err); }
+  }
+
+  async updateAlias(req: Request, res: Response, next: NextFunction) {
+    try {
+      const alias = await catalogService.updateAlias(String(req.params.id), req.body);
+      sendSuccess(res, "Alias updated", alias);
+    } catch (err) { next(err); }
+  }
+
+  async deleteAlias(req: Request, res: Response, next: NextFunction) {
+    try {
+      const removed = await catalogService.deleteAlias(String(req.params.id));
+      sendSuccess(res, "Alias removed", removed);
+    } catch (err) { next(err); }
+  }
+
+  async listClassificationFeedback(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await catalogService.listFeedback({
+        corrected: asBool(req.query.corrected),
+        reviewed: asBool(req.query.reviewed),
+        unmatchedOnly: asBool(req.query.unmatchedOnly),
+        page: Number(req.query.page) || 1,
+        limit: Number(req.query.limit) || 50,
+      });
+      sendSuccess(
+        res,
+        "Classification feedback retrieved",
+        { feedback: result.feedback, repeatedTerms: result.repeatedTerms },
+        200,
+        {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: Math.ceil(result.total / result.limit),
+          hasNext: result.page * result.limit < result.total,
+          hasPrev: result.page > 1,
+        }
+      );
+    } catch (err) { next(err); }
+  }
+
+  async reviewClassificationFeedback(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await catalogService.reviewFeedback(String(req.params.id), {
+        addAlias: req.body.addAlias,
+        adminId: req.user?.userId,
+      });
+      sendSuccess(res, "Feedback reviewed", result);
+    } catch (err) { next(err); }
+  }
+
   // ── Users ─────────────────────────────────────────────────
 
   async getUsers(req: Request, res: Response, next: NextFunction) {

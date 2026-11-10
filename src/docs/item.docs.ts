@@ -15,7 +15,23 @@
  *       - in: query
  *         name: category
  *         schema: { type: string }
+ *         description: >
+ *           Either vocabulary. One of the 20 legacy slugs the app has always sent, or any slug from
+ *           `GET /items/catalog`. A legacy slug is translated to the most precise level it means —
+ *           `cameras` finds Photography & video, not the whole of Electronics & Technology.
  *         example: tools
+ *       - in: query
+ *         name: subcategory
+ *         schema: { type: string }
+ *         description: A subcategory slug. Narrower than `category`, and combinable with it.
+ *         example: power_tools
+ *       - in: query
+ *         name: itemType
+ *         schema: { type: string }
+ *         description: >
+ *           An item type slug — the narrowest filter there is. Only listings placed on that exact
+ *           type match, so this returns nothing for a type no owner has used yet.
+ *         example: drill
  *       - in: query
  *         name: city
  *         schema: { type: string }

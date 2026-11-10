@@ -96,7 +96,16 @@ export interface IItem extends Document {
   title: string;
   description: string;
   category: string;
+  /** Free text from the app, read by nothing. Not the taxonomy — see `taxonomy` below. */
   subCategory?: string;
+  /** Where the listing sits in the November 2026 catalogue. Server-maintained; every field nullable. */
+  taxonomy?: {
+    category: string | null;
+    subcategory: string | null;
+    itemType: string | null;
+    source: "owner" | "classified" | "legacy_map" | null;
+    classifiedAt: Date | null;
+  };
   photos: string[];
   dailyRate: number;
   weeklyRate?: number;

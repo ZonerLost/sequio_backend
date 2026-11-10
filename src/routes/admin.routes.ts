@@ -4,6 +4,19 @@ import { authenticate, authorize } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import Joi from "joi";
 import { reviewCancellationSchema } from "../validators/booking.validator";
+import {
+  createCategorySchema,
+  updateCategorySchema,
+  createSubcategorySchema,
+  updateSubcategorySchema,
+  createItemTypeSchema,
+  updateItemTypeSchema,
+  createAliasSchema,
+  updateAliasSchema,
+  aliasQuerySchema,
+  feedbackQuerySchema,
+  reviewFeedbackSchema,
+} from "../validators/catalog.validator";
 
 const router = Router();
 const ctrl = new AdminController();
@@ -114,6 +127,36 @@ router.put(
 );
 /** The appeal outcome: lifts the suspension without touching the strikes behind it. */
 router.put("/users/:id/lift-suspension", ...adminGuard, ctrl.liftOwnerSuspension.bind(ctrl));
+
+// ── The rental catalogue ──────────────────────────────────
+// The admin dictionary. Everything here takes effect on the next request, which is the whole
+// requirement: the client adds a synonym or prohibits an item type **without an app release**.
+//
+// There is deliberately **no DELETE for a category, subcategory or item type.** Listings reference
+// slugs, so a delete orphans them permanently. Retiring a node is `active: false`; replacing one is
+// `mergedInto`, which moves its listings onto the survivor. An **alias** may be deleted, because
+// nothing references it and a bad synonym that cannot be removed makes the dictionary too risky to
+// add to.
+router.get("/catalog", ...adminGuard, ctrl.getCatalogTree.bind(ctrl));
+
+router.post("/catalog/categories", ...adminGuard, validate(createCategorySchema), ctrl.createCategory.bind(ctrl));
+router.put("/catalog/categories/:slug", ...adminGuard, validate(updateCategorySchema), ctrl.updateCategory.bind(ctrl));
+
+router.post("/catalog/subcategories", ...adminGuard, validate(createSubcategorySchema), ctrl.createSubcategory.bind(ctrl));
+router.put("/catalog/subcategories/:slug", ...adminGuard, validate(updateSubcategorySchema), ctrl.updateSubcategory.bind(ctrl));
+
+router.post("/catalog/item-types", ...adminGuard, validate(createItemTypeSchema), ctrl.createItemType.bind(ctrl));
+router.put("/catalog/item-types/:slug", ...adminGuard, validate(updateItemTypeSchema), ctrl.updateItemType.bind(ctrl));
+
+// Before /catalog/aliases/:id, or "search" would be read as an id (DO-NOT #1).
+router.get("/catalog/aliases", ...adminGuard, validate(aliasQuerySchema, "query"), ctrl.listAliases.bind(ctrl));
+router.post("/catalog/aliases", ...adminGuard, validate(createAliasSchema), ctrl.createAlias.bind(ctrl));
+router.put("/catalog/aliases/:id", ...adminGuard, validate(updateAliasSchema), ctrl.updateAlias.bind(ctrl));
+router.delete("/catalog/aliases/:id", ...adminGuard, ctrl.deleteAlias.bind(ctrl));
+
+/** The review queue: what the classifier got wrong, and the terms it had no answer for. */
+router.get("/catalog/feedback", ...adminGuard, validate(feedbackQuerySchema, "query"), ctrl.listClassificationFeedback.bind(ctrl));
+router.put("/catalog/feedback/:id/review", ...adminGuard, validate(reviewFeedbackSchema), ctrl.reviewClassificationFeedback.bind(ctrl));
 
 // ── Payments ──────────────────────────────────────────────
 router.get("/payments", ...adminGuard, validate(querySchema, "query"), ctrl.getPayments.bind(ctrl));

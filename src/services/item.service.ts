@@ -17,6 +17,13 @@ import { IItem, IWeeklySchedule, PaginationMeta } from "../types";
 import { CO2_BY_CATEGORY } from "../models/eco.model";
 import { classify } from "../helpers/classification.helper";
 import {
+  placeInTaxonomy,
+  categoryFilter,
+  taxonomyFilter,
+  recordClassificationFeedback,
+  ItemTaxonomy,
+} from "../helpers/catalog-mapping.helper";
+import {
   CategoryModel,
   SubcategoryModel,
   ItemTypeModel,
@@ -83,7 +90,37 @@ function getOwnerId(item: IItem): string {
 }
 
 export class ItemService {
-  async createItem(ownerId: string, data: Partial<IItem>): Promise<IItem> {
+  /**
+   * Creates a listing, after deciding where it belongs and whether it may exist at all.
+   *
+   * `subcategory` and `itemType` are request-only: they are folded into `taxonomy` and never
+   * stored at the top level. The response therefore carries `taxonomy`, not the three fields that
+   * were sent — the same shape difference `location.coordinates` and `location.geo` already have.
+   */
+  async createItem(
+    ownerId: string,
+    data: Partial<IItem> & { subcategory?: string; itemType?: string }
+  ): Promise<IItem> {
+    const { subcategory, itemType, ...fields } = data;
+
+    /**
+     * Where the listing belongs, and whether the Prohibited and Restricted Items Policy allows it.
+     *
+     * **422, not 400.** The request was perfectly well formed; the answer is that this item may not
+     * be rented out here. A client that lumps every non-2xx together still shows `message`, which
+     * names the policy reason, so the distinction costs nothing and tells an honest story in the
+     * logs.
+     */
+    const placement = await placeInTaxonomy({
+      title: fields.title,
+      category: fields.category,
+      subcategory,
+      itemType,
+    });
+    if (!placement.allowed) {
+      throw new AppError(placement.reason as string, HTTP_STATUS.UNPROCESSABLE);
+    }
+
     /**
      * Fill in coordinates from the address text when the client did not send any.
      *
@@ -99,13 +136,30 @@ export class ItemService {
       data.location as (AddressParts & { coordinates?: unknown }) | undefined
     );
 
-    return itemRepo.create({
-      ...data,
-      ...(resolved && data.location
-        ? { location: { ...data.location, ...coordinateFields(resolved.point, resolved) } }
+    const created = await itemRepo.create({
+      ...fields,
+      taxonomy: placement.taxonomy as IItem["taxonomy"],
+      ...(resolved && fields.location
+        ? { location: { ...fields.location, ...coordinateFields(resolved.point, resolved) } }
         : {}),
       owner: ownerId as unknown as IItem["owner"],
     });
+
+    /**
+     * What we suggested against what they chose. Deliberately not awaited and never fatal — the
+     * listing exists, and an analytics write must not turn a success into an error the owner
+     * responds to by submitting again.
+     */
+    if (fields.title) {
+      void recordClassificationFeedback({
+        title: fields.title,
+        suggestion: placement.suggestion,
+        chosen: placement.taxonomy,
+        listing: created._id,
+      });
+    }
+
+    return created;
   }
 
   async getItems(query: Record<string, unknown>) {
@@ -113,6 +167,8 @@ export class ItemService {
       page = 1,
       limit = 10,
       category,
+      subcategory,
+      itemType,
       city,
       minPrice,
       maxPrice,
@@ -127,7 +183,21 @@ export class ItemService {
     } = query;
 
     const filter: FilterQuery = visibleToPublic();
-    if (category) filter.category = category;
+
+    /**
+     * Taxonomy filters go into `$and`, not onto the filter directly.
+     *
+     * `categoryFilter` returns an `$or` (the legacy field *or* the taxonomy field), and
+     * `keywordFilter` below returns an `$or` of its own. Two top-level `$or` keys cannot coexist in
+     * one object — the second assignment wins and the first filter vanishes without a word, which
+     * on a search endpoint means quietly returning the wrong listings.
+     */
+    const conditions: Record<string, unknown>[] = [];
+    if (category) conditions.push(await categoryFilter(String(category)));
+    if (subcategory) conditions.push(taxonomyFilter("subcategory", String(subcategory)));
+    if (itemType) conditions.push(taxonomyFilter("itemType", String(itemType)));
+    if (conditions.length) filter.$and = conditions;
+
     if (city) filter["location.city"] = { $regex: city, $options: "i" };
     if (condition) filter.condition = condition;
     if (minPrice || maxPrice) {
@@ -228,12 +298,41 @@ export class ItemService {
     return itemRepo.findByOwner(ownerId);
   }
 
-  async updateItem(itemId: string, ownerId: string, data: Partial<IItem>): Promise<IItem> {
+  async updateItem(
+    itemId: string,
+    ownerId: string,
+    data: Partial<IItem> & { subcategory?: string; itemType?: string }
+  ): Promise<IItem> {
     const item = await itemRepo.findById(itemId);
     if (!item) throw new AppError("Item not found", HTTP_STATUS.NOT_FOUND);
     if (getOwnerId(item) !== ownerId)
       throw new AppError("Forbidden", HTTP_STATUS.FORBIDDEN);
     const update: Record<string, unknown> = {};
+    const { subcategory, itemType, ...fields } = data;
+
+    /**
+     * Re-place the listing when anything that decides its place changed.
+     *
+     * Merged against what is stored, so an update sending only `itemType` keeps the existing title
+     * and category rather than classifying a fragment. The title is included because editing a
+     * listing into a prohibited item has to be refused for the same reason creating one is —
+     * otherwise the policy is one PUT away from being bypassed.
+     */
+    if (fields.category || fields.title || subcategory || itemType) {
+      const current = item.taxonomy as ItemTaxonomy | undefined;
+      const placement = await placeInTaxonomy({
+        title: fields.title ?? item.title,
+        category: fields.category ?? item.category,
+        subcategory: subcategory ?? current?.subcategory ?? null,
+        itemType: itemType ?? current?.itemType ?? null,
+      });
+      if (!placement.allowed) {
+        throw new AppError(placement.reason as string, HTTP_STATUS.UNPROCESSABLE);
+      }
+      // Dot paths, never a nested object: assigning `taxonomy` would replace the whole
+      // subdocument and drop whatever it is not carrying (DO-NOT #3).
+      for (const [k, v] of Object.entries(placement.taxonomy)) update[`taxonomy.${k}`] = v;
+    }
 
     /**
      * Re-geocode when the address text changed but no coordinates came with it.
@@ -255,7 +354,7 @@ export class ItemService {
       if (resolved) Object.assign(update, coordinateUpdate(resolved.point, resolved));
     }
 
-    for (const [key, value] of Object.entries(data)) {
+    for (const [key, value] of Object.entries(fields)) {
       if ((key === "location" || key === "deliveryOptions") && value && typeof value === "object") {
         for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
           if (key === "location" && k === "coordinates" && v && typeof v === "object") {

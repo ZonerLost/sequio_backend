@@ -371,6 +371,271 @@
 
 /**
  * @swagger
+ * /admin/catalog:
+ *   get:
+ *     summary: The whole catalogue, as an administrator needs to see it
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     description: >
+ *       Unlike the public `GET /items/catalog`, this includes inactive, merged and **prohibited**
+ *       nodes — a picker that offers a prohibited item type is a bug, and an administrator who
+ *       cannot see one cannot un-prohibit it. Each subcategory carries its listing count and each
+ *       item type its alias count.
+ *
+ *
+ *       `aliasKinds` comes back alongside the tree so the admin screen does not hardcode the list.
+ *     responses:
+ *       200: { description: The catalogue tree and the alias kinds }
+ *
+ * /admin/catalog/categories:
+ *   post:
+ *     summary: Add a category
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [slug, nameEn]
+ *             properties:
+ *               slug: { type: string, example: pet_supplies, description: "Lowercase, digits and underscores. An identifier, never shown to a user, and never changed afterwards." }
+ *               nameEn: { type: string }
+ *               nameFr: { type: string, nullable: true }
+ *               sortOrder: { type: integer }
+ *     responses:
+ *       201: { description: Created }
+ *       409: { description: That slug already exists }
+ *
+ * /admin/catalog/categories/{slug}:
+ *   put:
+ *     summary: Rename, re-sort, retire or merge a category
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       **There is no delete.** Listings reference slugs, so deleting a node orphans them
+ *       permanently. Retiring one is `active: false`; replacing one is `mergedInto`, which also
+ *       moves every listing onto the survivor and reports how many in `effects`.
+ *
+ *
+ *       `slug` is not accepted and is silently dropped if sent.
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nameEn: { type: string }
+ *               nameFr: { type: string, nullable: true }
+ *               sortOrder: { type: integer }
+ *               active: { type: boolean }
+ *               mergedInto: { type: string, nullable: true, description: "The surviving slug. null undoes the merge." }
+ *     responses:
+ *       200: { description: "Updated, with an `effects` object naming what else moved" }
+ *       409: { description: The merge would make a cycle }
+ *
+ * /admin/catalog/subcategories:
+ *   post:
+ *     summary: Add a subcategory
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       201: { description: Created }
+ *       400: { description: Unknown parent category }
+ *
+ * /admin/catalog/subcategories/{slug}:
+ *   put:
+ *     summary: Rename, move, retire or merge a subcategory
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       Sending `category` **moves** it, and every listing under it is re-pointed in the same
+ *       operation — `item.taxonomy` stores all three levels, so a move that did not would leave
+ *       listings filed under a category they are no longer in.
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Updated }
+ *
+ * /admin/catalog/item-types:
+ *   post:
+ *     summary: Add an item type
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       `eligibility` is `allowed`, `conditional`, `under_review` or `prohibited`, and it is
+ *       enforced at listing time rather than advisory. `eligibilityNote` is shown to the owner when
+ *       a listing is blocked, so it has to say what the problem is.
+ *     responses:
+ *       201: { description: Created }
+ *
+ * /admin/catalog/item-types/{slug}:
+ *   put:
+ *     summary: Rename, move, retire, merge or re-classify an item type
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       Marking something `prohibited` takes effect on the next request — no deploy and no app
+ *       release. Existing listings on it are **not** removed: that is a moderation decision, and
+ *       this endpoint reports how many there are in `effects.listingsStillUnderIt`.
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Updated }
+ *
+ * /admin/catalog/aliases:
+ *   get:
+ *     summary: The alias dictionary
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       `search` matches the **normalised** form, so looking for "Kärcher" finds the row stored as
+ *       "karcher".
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *       - in: query
+ *         name: itemType
+ *         schema: { type: string }
+ *       - in: query
+ *         name: kind
+ *         schema: { type: string, enum: [synonym, brand, usage, typo] }
+ *       - in: query
+ *         name: approved
+ *         schema: { type: boolean }
+ *     responses:
+ *       200: { description: Aliases, paginated }
+ *   post:
+ *     summary: Add a word to the dictionary
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       Live on the next request. This is the endpoint behind the client's requirement that
+ *       vocabulary be editable "without releasing a new app version".
+ *
+ *
+ *       **`kind` is the field to get right.** A `synonym` weighs 1.0 and can decide a
+ *       classification on its own; a `brand` weighs 0.45 and deliberately cannot, because Kärcher
+ *       makes pressure washers, carpet cleaners and steam cleaners. Filing a brand as a synonym is
+ *       the easiest way to make the classifier confidently wrong, which is the one thing it is
+ *       built not to be.
+ *
+ *
+ *       The same phrase may point at several item types — that is what makes a brand ambiguous —
+ *       but not twice at the same one (409).
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [phrase, itemType]
+ *             properties:
+ *               phrase: { type: string, example: "laveuse à pression", description: "As a human writes it. The normalised form is derived." }
+ *               itemType: { type: string, example: pressure_washer }
+ *               language: { type: string, enum: [en, fr, any] }
+ *               kind: { type: string, enum: [synonym, brand, usage, typo] }
+ *               weight: { type: number, nullable: true, description: "Overrides the default weight for the kind. Leave unset unless there is a reason." }
+ *               approved: { type: boolean }
+ *     responses:
+ *       201: { description: Added }
+ *       409: { description: That phrase already points at that item type }
+ *
+ * /admin/catalog/aliases/{id}:
+ *   put:
+ *     summary: Edit an alias
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Updated }
+ *   delete:
+ *     summary: Remove a word from the dictionary
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       An alias **may** be deleted, unlike a taxonomy node: nothing references it, it describes no
+ *       listing, and a bad synonym that cannot be removed makes the dictionary too risky to add to.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Removed }
+ *
+ * /admin/catalog/feedback:
+ *   get:
+ *     summary: What the classifier got wrong
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       The review queue the specification asks for: corrections, and terms nothing matched.
+ *       `repeatedTerms` lists phrases that have arrived more than once and nobody has looked at —
+ *       the same word arriving ten times is worth more attention than ten words arriving once.
+ *     parameters:
+ *       - in: query
+ *         name: corrected
+ *         schema: { type: boolean }
+ *         description: Only rows where the owner picked something other than the top suggestion.
+ *       - in: query
+ *         name: reviewed
+ *         schema: { type: boolean }
+ *       - in: query
+ *         name: unmatchedOnly
+ *         schema: { type: boolean }
+ *         description: Only terms the classifier had no answer for at all.
+ *     responses:
+ *       200: { description: Feedback rows, paginated, plus repeatedTerms }
+ *
+ * /admin/catalog/feedback/{id}/review:
+ *   put:
+ *     summary: Close a feedback row, optionally teaching the dictionary
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     description: >
+ *       Pass `addAlias` and the term from the feedback becomes a synonym for the item type named —
+ *       the whole loop in one call, with no chance of mistyping the phrase being fixed.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               addAlias:
+ *                 type: object
+ *                 properties:
+ *                   itemType: { type: string }
+ *                   kind: { type: string, enum: [synonym, brand, usage, typo] }
+ *     responses:
+ *       200: { description: Reviewed }
+ */
+
+/**
+ * @swagger
  * /admin/payments/{id}/refund:
  *   put:
  *     summary: Refund a payment

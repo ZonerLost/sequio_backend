@@ -246,8 +246,46 @@ const options: swaggerJsdoc.Options = {
               type: "string",
               example: "Great mountain bike, perfect for trails and city riding.",
             },
-            category: { type: "string", example: "sports" },
-            subCategory: { type: "string", example: "cycling" },
+            category: {
+              type: "string",
+              example: "sports",
+              description:
+                "Either vocabulary: one of the 20 legacy slugs, or a slug from GET /items/catalog.",
+            },
+            subCategory: {
+              type: "string",
+              example: "cycling",
+              description: "Free text, read by nothing. Not the taxonomy — note the capital C.",
+            },
+            subcategory: {
+              type: "string",
+              example: "cycling",
+              description:
+                "Request only. A subcategory slug from the catalogue; folded into taxonomy.",
+            },
+            itemType: {
+              type: "string",
+              example: "bicycle",
+              description:
+                "Request only. An item type slug from the catalogue. Sending one is what makes eligibility enforceable — a prohibited or restricted type is refused with 422 and the policy reason.",
+            },
+            taxonomy: {
+              type: "object",
+              description:
+                "Response only, server-maintained. Where the listing sits in the November 2026 catalogue. Every field is nullable: a listing with no honest place in the tree says so rather than being filed somewhere plausible.",
+              properties: {
+                category: { type: "string", nullable: true, example: "sports_fitness" },
+                subcategory: { type: "string", nullable: true, example: "cycling" },
+                itemType: { type: "string", nullable: true, example: "bicycle" },
+                source: {
+                  type: "string",
+                  nullable: true,
+                  enum: ["owner", "classified", "legacy_map"],
+                  description: "Who decided: the owner, the classifier, or the legacy category map.",
+                },
+                classifiedAt: { type: "string", format: "date-time", nullable: true },
+              },
+            },
             dailyRate: { type: "number", example: 25 },
             weeklyRate: { type: "number", example: 140 },
             monthlyRate: { type: "number", example: 450 },

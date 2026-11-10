@@ -24,6 +24,16 @@ export const createItemSchema = Joi.object({
   description: Joi.string().min(20).max(2000).required(),
   category: Joi.string().required(),
   subCategory: Joi.string().optional(),
+  /**
+   * The taxonomy, as `GET /items/classify` returns it — copy the chosen suggestion's three fields
+   * straight across. `category` accepts either vocabulary: one of the 20 legacy slugs the app has
+   * always sent, or a slug from the new tree.
+   *
+   * An `itemType` is what makes eligibility enforceable, so sending one is how an owner gets a
+   * clear refusal up front instead of a listing an administrator removes later.
+   */
+  subcategory: Joi.string().optional(),
+  itemType: Joi.string().optional(),
   dailyRate: Joi.number().min(1).required(),
   weeklyRate: Joi.number().min(1).optional(),
   monthlyRate: Joi.number().min(1).optional(),
@@ -57,6 +67,8 @@ export const updateItemSchema = Joi.object({
   description: Joi.string().min(20).max(2000).optional(),
   category: Joi.string().optional(),
   subCategory: Joi.string().optional(),
+  subcategory: Joi.string().optional(),
+  itemType: Joi.string().optional(),
   dailyRate: Joi.number().min(1).optional(),
   weeklyRate: Joi.number().min(1).optional(),
   monthlyRate: Joi.number().min(1).optional(),
@@ -125,7 +137,14 @@ export const updateScheduleSchema = Joi.object({
 export const itemQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(50).default(10),
+  /**
+   * Either vocabulary. A legacy slug is translated to the most precise taxonomy level it means —
+   * `cameras` finds Photography & video, not the whole of Electronics. See categoryFilter().
+   */
   category: Joi.string().optional(),
+  /** The new levels, for a client that has the catalogue. Narrower than `category`. */
+  subcategory: Joi.string().optional(),
+  itemType: Joi.string().optional(),
   city: Joi.string().optional(),
   minPrice: Joi.number().min(0).optional(),
   maxPrice: Joi.number().optional(),

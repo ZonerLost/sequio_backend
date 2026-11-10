@@ -36,7 +36,31 @@ const ItemSchema = new Schema<IItem>(
     title: { type: String, required: true, trim: true },
     description: { type: String, required: true, trim: true },
     category: { type: String, required: true },
+    /**
+     * Free text, written by the app, read by nothing. Predates the catalogue and is kept so the
+     * eight listings that have one do not lose it. **Not** the taxonomy — note the capital C, and
+     * see `taxonomy.subcategory` below, which is a slug from a controlled vocabulary.
+     */
     subCategory: { type: String },
+    /**
+     * Where this listing sits in the November 2026 catalogue.
+     *
+     * Nested rather than three top-level fields on purpose: a flat `subcategory` living next to the
+     * free-text `subCategory` above, differing only in one capital letter, is a trap that would
+     * mis-assign something eventually, compile cleanly and never be noticed.
+     *
+     * Every field is nullable. A listing whose legacy category was `other` has no honest place in
+     * the new tree, and nulls say so — unlike a plausible-looking guess, which reads exactly like a
+     * choice someone made. `source` records who decided: the owner, the legacy map, or the
+     * classifier. Maintained only by `placeInTaxonomy()` in catalog-mapping.helper.ts.
+     */
+    taxonomy: {
+      category: { type: String, default: null },
+      subcategory: { type: String, default: null },
+      itemType: { type: String, default: null },
+      source: { type: String, enum: ["owner", "classified", "legacy_map"], default: null },
+      classifiedAt: { type: Date, default: null },
+    },
     photos: [{ type: String }],
     dailyRate: { type: Number, required: true, min: 0 },
     weeklyRate: { type: Number, min: 0 },
@@ -128,6 +152,11 @@ const ItemSchema = new Schema<IItem>(
 
 ItemSchema.index({ owner: 1 });
 ItemSchema.index({ category: 1 });
+// The three taxonomy levels a search can filter on. Sparse: nothing created before November 2026
+// has them, and an index entry for 28 nulls is of no use to anyone.
+ItemSchema.index({ "taxonomy.category": 1 }, { sparse: true });
+ItemSchema.index({ "taxonomy.subcategory": 1 }, { sparse: true });
+ItemSchema.index({ "taxonomy.itemType": 1 }, { sparse: true });
 ItemSchema.index({ "location.city": 1 });
 // Sparse: most listings have no coordinates yet, and a 2dsphere index rejects a document whose point
 // is present but malformed — sparse keeps un-geocoded listings out of it entirely.

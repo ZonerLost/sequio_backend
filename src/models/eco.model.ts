@@ -22,6 +22,28 @@ export const CO2_BY_CATEGORY: Record<string, number> = {
   water_sports: 55,
   music: 35,
   other: 20,
+
+  /**
+   * The November 2026 taxonomy, keyed alongside the 20 legacy slugs rather than replacing them.
+   *
+   * `item.category` keeps whatever the client sent, in either vocabulary, so the lookup has to
+   * answer for both — otherwise every listing created by a catalogue-aware client would fall
+   * through to `other` and silently report 20 kg. These are averages over each category's
+   * subcategories, derived from the legacy figures above; like those, they are estimates, not
+   * measurements, and no source was ever supplied for either set.
+   */
+  tools_home_improvement: 40,
+  garden_outdoors: 25,
+  camping_outdoor_recreation: 35,
+  sports_fitness: 35,
+  parties_events: 20,
+  electronics_technology: 70,
+  home_kitchen: 25,
+  family_pets: 30,
+  travel_transportation: 60,
+  fashion_beauty: 20,
+  games_hobbies: 20,
+  professional_equipment: 50,
 };
 
 // KM equivalent per kg of CO2 (driving a car emits ~0.21 kg CO2/km)
