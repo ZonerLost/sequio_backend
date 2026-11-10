@@ -9,7 +9,11 @@ Three endpoints matter to you. One is new behaviour on an endpoint you already c
 
 ## 1. `GET /items/catalog` — the picker
 
-Public, no auth. The whole tree in one call: **12 categories → 88 subcategories → 31 item types**.
+Public, no auth. The whole tree in one call: **12 categories → 88 subcategories → 28 item types**.
+
+(31 item types exist. Three are `prohibited` and are deliberately withheld from this endpoint — a
+picker must not offer something it cannot file. They are visible to administrators, who otherwise
+could not un-prohibit one.)
 
 ```json
 [
