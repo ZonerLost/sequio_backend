@@ -154,7 +154,7 @@ Three things to keep from the current implementation: the per-attempt idempotenc
 create a second intent when one is already `succeeded` or `processing`, and the refusal to price a
 booking that has no stored owner payout.
 
-### 2d. Cancellation and refunds
+### 2d. Cancellation and refunds — **built**
 
 | Window | Renter gets | Notes |
 |---|---|---|
@@ -170,10 +170,26 @@ derive from the coordinates we now store.
 Partial refunds are a small piece of work: Stripe supports them and the price calculator already
 handles any number of days; nothing calls either today.
 
-### 2e. Early-return refund requests
+**Built 2026-11-10.** The listing time zone is derived from the coordinates rather than asked for —
+`timezone.helper.ts`, with `item.location.timeZone` as an override — and the windows are measured
+against a start instant reconstructed from the stored calendar date and the pickup time, because
+`startDate` is 00:00 UTC on 18 of 22 bookings. Three points their specification leaves open had to
+be decided to compute anything, each isolated to one place: tax on a partial refund follows the
+proportion of the taxable base refunded, delivery is refunded in full whenever any rental is, and
+"50% of base" means 50% of the discounted `rentalAmount`. See the Cancelling section of
+`CLAUDE.md`. Still open with the client: whether those three readings are what they intended.
+
+### 2e. Early-return refund requests — **built**
 
 Renter requests an amount, owner approves or declines. No automatic refund. Needs commission and tax
 adjustment, notifications and an audit trail — and an answer on what happens when the owner declines.
+
+**Built 2026-11-10**, sharing one model with the "other 50%" an owner may approve after a 24–48h
+cancellation: both are a refund nobody is entitled to that somebody has to agree to. **A decline is
+final**, because no escalation path is specified and inventing one would be inventing policy; the
+request stays visible at `GET /admin/refund-requests` and an administrator can still refund by hand
+through the endpoint that already exists. That is the answer to gap 6 unless the client supplies a
+different one.
 
 ---
 

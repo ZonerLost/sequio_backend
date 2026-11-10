@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import { BookingService } from "../services/booking.service";
 import { OwnerCancellationService } from "../services/owner-cancellation.service";
+import { RefundRequestService } from "../services/refund-request.service";
 import { sendSuccess, sendCreated } from "../helpers/response.helper";
 
 const bookingService = new BookingService();
 const ownerCancellationService = new OwnerCancellationService();
+const refundRequestService = new RefundRequestService();
 
 export class BookingController {
   async createBooking(req: Request, res: Response, next: NextFunction) {
@@ -93,6 +95,87 @@ export class BookingController {
         req.body.reason
       );
       sendSuccess(res, "Booking cancelled", booking);
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * What cancelling right now would refund.
+   *
+   * The client's requirement is that the refundable amount is shown **before** cancelling, not
+   * discovered afterwards. Readable by the owner too, because the same numbers say what they keep.
+   */
+  async getCancellationQuote(req: Request, res: Response, next: NextFunction) {
+    try {
+      const quote = await bookingService.cancellationQuote(
+        String(req.params.id),
+        req.user!.userId
+      );
+      sendSuccess(res, "Cancellation quote calculated", quote);
+    } catch (err) { next(err); }
+  }
+
+  async requestRefund(req: Request, res: Response, next: NextFunction) {
+    try {
+      const request = await refundRequestService.request(String(req.params.id), req.user!.userId, {
+        amount: Number(req.body.amount),
+        reason: String(req.body.reason),
+      });
+      sendCreated(res, "Refund request sent to the owner", request);
+    } catch (err) { next(err); }
+  }
+
+  async getBookingRefundRequests(req: Request, res: Response, next: NextFunction) {
+    try {
+      const requests = await refundRequestService.listForBooking(
+        String(req.params.id),
+        req.user!.userId
+      );
+      sendSuccess(res, "Refund requests retrieved", requests);
+    } catch (err) { next(err); }
+  }
+
+  async getMyRefundRequests(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { status, role, page, limit } = req.query;
+      const result = await refundRequestService.listMine(req.user!.userId, {
+        status: status as string,
+        role: role as "renter" | "owner" | undefined,
+        page: Number(page) || 1,
+        limit: Number(limit) || 20,
+      });
+      sendSuccess(res, "Refund requests retrieved", result.requests, 200, {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / result.limit),
+        hasNext: result.page * result.limit < result.total,
+        hasPrev: result.page > 1,
+      });
+    } catch (err) { next(err); }
+  }
+
+  async decideRefundRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await refundRequestService.decide(
+        String(req.params.requestId),
+        req.user!.userId,
+        {
+          approve: Boolean(req.body.approve),
+          ...(req.body.amount === undefined ? {} : { amount: Number(req.body.amount) }),
+          ...(req.body.note ? { note: String(req.body.note) } : {}),
+        }
+      );
+      sendSuccess(res, req.body.approve ? "Refund approved" : "Refund declined", result);
+    } catch (err) { next(err); }
+  }
+
+  async withdrawRefundRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const request = await refundRequestService.withdraw(
+        String(req.params.requestId),
+        req.user!.userId
+      );
+      sendSuccess(res, "Refund request withdrawn", request);
     } catch (err) { next(err); }
   }
 

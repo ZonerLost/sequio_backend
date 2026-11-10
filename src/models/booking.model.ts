@@ -174,6 +174,43 @@ export interface IBooking extends Document {
   postRentalPhotos: string[];
   declineReason?: string;
   cancelReason?: string;
+  /**
+   * What the cancellation policy decided, frozen at the moment of cancellation.
+   *
+   * Stored rather than recomputed, for the same reason `pricing` is: the tier depends on the time
+   * the renter cancelled and the time zone the listing was in, and neither is recoverable later.
+   * Recomputing a tier from `cancelledAt` next month would also silently re-decide a refund if the
+   * policy constants were ever changed.
+   */
+  cancellation?: {
+    tier?: "full" | "partial" | "none";
+    cancelledBy?: "renter" | "owner" | "admin";
+    timeZone?: string;
+    timeZoneSource?: string;
+    startsAt?: Date;
+    hoursBeforeStart?: number;
+    /** True when the policy owed the renter money and Stripe did not return it. Support retries. */
+    refundOutstanding?: boolean;
+  };
+  /**
+   * Where this booking's money actually ended up, after everything that has been refunded.
+   *
+   * **A sibling of `cancellation` rather than a part of it, and deliberately so.** It is written by
+   * a cancellation *and* by an owner approving an early-return refund, which is not a cancellation
+   * at all — a field called `cancellation.ownerRetainedCents` that is also set when nothing was
+   * cancelled is the kind of name that misleads somebody a year from now.
+   *
+   * `ownerRetainedCents` is load-bearing beyond the audit trail: under the platform charge model the
+   * payout job reads it to decide what to transfer, so a stale value pays an owner a share they have
+   * already agreed to give up. **Absent means nothing has been refunded** and the owner is owed the
+   * payout the booking was priced at.
+   */
+  settlement?: {
+    refundedCents?: number;
+    refundBreakdown?: { rental?: number; delivery?: number; fee?: number; tax?: number };
+    ownerRetainedCents?: number;
+    platformRetainedCents?: number;
+  };
   acceptedAt?: Date;
   cancelledAt?: Date;
   /** Set only when an administrator cancelled it, so the audit trail survives. */
@@ -307,6 +344,28 @@ const BookingSchema = new Schema<IBooking>(
     },
     declineReason: String,
     cancelReason: String,
+    cancellation: {
+      tier: { type: String, enum: ["full", "partial", "none"] },
+      cancelledBy: { type: String, enum: ["renter", "owner", "admin"] },
+      timeZone: { type: String },
+      timeZoneSource: { type: String },
+      startsAt: { type: Date },
+      hoursBeforeStart: { type: Number },
+      refundOutstanding: { type: Boolean },
+    },
+    // No defaults anywhere here: absent means "nothing has been refunded", and a default would
+    // apply to new documents only, saying nothing about the thousands that predate it (DO-NOT #13).
+    settlement: {
+      refundedCents: { type: Number },
+      refundBreakdown: {
+        rental: { type: Number },
+        delivery: { type: Number },
+        fee: { type: Number },
+        tax: { type: Number },
+      },
+      ownerRetainedCents: { type: Number },
+      platformRetainedCents: { type: Number },
+    },
     acceptedAt: Date,
     cancelledAt: Date,
     // Without this on the schema, strict mode silently drops it and the audit trail is lost.

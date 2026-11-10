@@ -16,6 +16,11 @@ export const NOTIFICATION_TYPES = [
   "return_time_disputed",
   "owner_cancelled",
   "owner_strike",
+  /** Phase 2d/2e. The admin panel builds its mute list from this array, so these appear there. */
+  "booking_cancelled_refund",
+  "refund_requested",
+  "refund_approved",
+  "refund_declined",
   "review_received",
   "message_received",
   "dispute_opened",

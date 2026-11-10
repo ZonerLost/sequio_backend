@@ -90,8 +90,43 @@ export const payoutDueAt = (booking: {
   return new Date(basis.getTime() + ENV.OWNER_PAYOUT_HOLD_HOURS * 60 * 60 * 1000);
 };
 
-/** Bookings in which a payout would be wrong, whatever the dates say. */
-const UNPAYABLE_BOOKING_STATUSES = ["cancelled", "declined"];
+/** Bookings in which a payout would be wrong whatever the dates say, and whatever was retained. */
+const UNPAYABLE_BOOKING_STATUSES = ["declined"];
+
+/**
+ * What the owner is owed on this booking, in cents, or `null` if nothing is.
+ *
+ * Normally it is the payout the booking was priced at. Two things override that, and both arrived
+ * with the refund work in Phase 2d:
+ *
+ * 1. **`settlement.ownerRetainedCents` wins whenever it is present.** It is written by a
+ *    cancellation *and* by an owner approving an early-return refund, and in both cases it is what
+ *    the owner is left owed after funding their share of what went back to the renter. Reading the
+ *    priced payout instead would pay them in full while the renter's refund came out of Atussa's
+ *    balance — the owner would have agreed to something that cost them nothing.
+ * 2. **A cancelled booking with no settlement pays nothing.** Before Phase 2d a cancelled booking
+ *    was never paid out, which was right while every cancellation refunded everything. The
+ *    under-24h tier retains the owner's share, so "cancelled" alone no longer decides it — but an
+ *    *absent* figure is unknown, not zero, and unknown must not pay out (DO-NOT #13). That covers
+ *    every cancellation predating this, plus the owner- and admin-initiated paths, which refund in
+ *    full or leave the decision to a human and write no settlement either way.
+ */
+export const payableCentsFor = (booking: {
+  status?: string;
+  pricing?: { ownerPayout?: { amount?: number } } | null;
+  settlement?: { ownerRetainedCents?: number } | null;
+}): number | null => {
+  // Checked here as well as in `release`, so this function is the whole answer on its own. The
+  // caller keeps its own check only because it reports a more specific skip reason.
+  if (booking.status && UNPAYABLE_BOOKING_STATUSES.includes(booking.status)) return null;
+
+  const retained = booking.settlement?.ownerRetainedCents;
+  if (typeof retained === "number") return retained > 0 ? Math.round(retained) : null;
+  if (booking.status === "cancelled") return null;
+
+  const priced = Math.round((booking.pricing?.ownerPayout?.amount ?? 0) * 100);
+  return priced > 0 ? priced : null;
+};
 
 export class OwnerPayoutService {
   /**
@@ -122,8 +157,24 @@ export class OwnerPayoutService {
       return result({ skipped: "booking_not_payable" });
     }
 
-    const payoutCents = Math.round((booking.pricing?.ownerPayout?.amount ?? 0) * 100);
-    if (payoutCents <= 0) return result({ skipped: "nothing_to_pay" });
+    const payable = payableCentsFor(booking);
+    if (payable === null) {
+      /**
+       * Two different situations, and the lease row has to tell them apart.
+       *
+       * A **cancelled booking with no settlement** is not payable: nobody has decided what the
+       * owner keeps, which is the state every owner- and admin-initiated cancellation is in, plus
+       * every cancellation that predates Phase 2d. Someone has to look at it.
+       *
+       * `nothing_to_pay` means the arithmetic came to zero on a booking that is otherwise fine —
+       * a different problem with a different fix. Collapsing the two would hide a pile of
+       * cancellations needing a decision inside a counter that usually means "nothing to do".
+       */
+      return result({
+        skipped: booking.status === "cancelled" ? "booking_not_payable" : "nothing_to_pay",
+      });
+    }
+    const payoutCents = payable;
 
     const owner = await UserModel.findById(base.payee).select("stripeAccount").lean();
     const account = owner?.stripeAccount;
@@ -198,7 +249,20 @@ export class OwnerPayoutService {
           $unset: { payoutError: "" },
         }
       );
-      await BookingModel.updateOne({ _id: base.booking }, { $set: { paymentStatus: "paid_out" } });
+      /**
+       * `paid_out` is written only over a payment state that is not already about a refund.
+       *
+       * A cancellation in the 24-48h band leaves the booking `partially_refunded` **and** leaves the
+       * owner a share to be paid, so both facts are true and only one string can be stored.
+       * Overwriting would make a partially refunded booking read as an ordinary completed one, and
+       * the refund is the more consequential fact for a renter looking at it. The payout itself is
+       * never lost: `payoutAt` and `stripeTransferId` on the payment are what the ledger and the
+       * job itself read.
+       */
+      await BookingModel.updateOne(
+        { _id: base.booking, paymentStatus: { $nin: ["refunded", "partially_refunded"] } },
+        { $set: { paymentStatus: "paid_out" } }
+      );
 
       // After Stripe confirmed, never before: a ledger row saying money moved when it did not is
       // worse than a missing one, because nothing contradicts it.

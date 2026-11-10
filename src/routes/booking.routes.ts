@@ -13,6 +13,9 @@ import {
   disputeReturnTimeSchema,
   bookingQuerySchema,
   quoteSchema,
+  refundRequestSchema,
+  refundDecisionSchema,
+  refundRequestQuerySchema,
 } from "../validators/booking.validator";
 
 const router = Router();
@@ -24,7 +27,33 @@ router.use(authenticate);
 router.post("/", validate(createBookingSchema), ctrl.createBooking.bind(ctrl));
 router.get("/sent", validate(bookingQuerySchema, "query"), ctrl.getSentBookings.bind(ctrl));
 router.get("/received", validate(bookingQuerySchema, "query"), ctrl.getReceivedBookings.bind(ctrl));
+/**
+ * Refund requests, mounted **above** `/:id` — DO-NOT #1.
+ *
+ * `GET /bookings/refund-requests` is a single path segment, so registered after `/:id` it would be
+ * swallowed by `getBookingById` and answer `"Invalid ID format"` with a 400. The `/:id/...` routes
+ * further down are two segments and cannot collide.
+ */
+router.get(
+  "/refund-requests",
+  validate(refundRequestQuerySchema, "query"),
+  ctrl.getMyRefundRequests.bind(ctrl)
+);
+router.put(
+  "/refund-requests/:requestId/decide",
+  validate(refundDecisionSchema),
+  ctrl.decideRefundRequest.bind(ctrl)
+);
+router.put("/refund-requests/:requestId/withdraw", ctrl.withdrawRefundRequest.bind(ctrl));
+
 router.get("/:id", ctrl.getBookingById.bind(ctrl));
+router.get("/:id/cancellation-quote", ctrl.getCancellationQuote.bind(ctrl));
+router.get("/:id/refund-requests", ctrl.getBookingRefundRequests.bind(ctrl));
+router.post(
+  "/:id/refund-request",
+  validate(refundRequestSchema),
+  ctrl.requestRefund.bind(ctrl)
+);
 router.put("/:id/accept", ctrl.acceptBooking.bind(ctrl));
 router.put("/:id/decline", validate(declineBookingSchema), ctrl.declineBooking.bind(ctrl));
 router.put("/:id/cancel", validate(cancelBookingSchema), ctrl.cancelBooking.bind(ctrl));

@@ -2,6 +2,25 @@
 
 For the client discussion. Written 2026-10-28 against the live backend.
 
+> **Update, 2026-11-10 — the cancellation and refund policy is now built.** The headline below was
+> accurate when this was written and is no longer: the three refund windows, partial refunds, and the
+> early-return request flow are all in the code, and the tiers are measured against the listing's
+> local time zone. This document is left as it was, because it is the record of what was asked, and
+> the questions in Part 3 that have **not** been answered are still open. Three of them had to be
+> decided to compute any money at all, and each decision is isolated to one place so it is a one-line
+> change when the client answers:
+>
+> 1. **Tax on a partial refund** follows the proportion of the taxable base refunded. On a $100/day
+>    rental that is **$0** under the live pricing model and **$7.49** under the November one — not a
+>    rounding difference, and worth confirming.
+> 2. **Delivery is refunded in full** whenever any of the rental is, because the journey was not made.
+> 3. **"50% of base" means 50% of the discounted rental** the renter actually paid, not of the
+>    pre-discount list price.
+>
+> What the owner-declines case does is also a decision rather than an answer: the decline stands, the
+> renter is told, and an administrator can still refund by hand. See the current state in
+> `CLAUDE.md` under "Cancelling" and "Refund requests".
+
 **The headline: the charging works, but there is no cancellation or refund policy in the system at
 all.** A renter who pays for 10 days and cancels on day 5 currently gets **nothing back**, and the
 only way to give them anything is for an administrator to notice and refund the whole amount by hand.

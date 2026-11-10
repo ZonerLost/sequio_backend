@@ -125,6 +125,12 @@ router.put(
   validate(reviewCancellationSchema),
   ctrl.reviewOwnerCancellation.bind(ctrl)
 );
+/**
+ * Refund requests — read-only. A declined request has no escalation path in the specification, so
+ * there is deliberately no admin decision route; `/payments/:id/refund` is the override.
+ */
+router.get("/refund-requests", ...adminGuard, ctrl.listRefundRequests.bind(ctrl));
+
 /** The appeal outcome: lifts the suspension without touching the strikes behind it. */
 router.put("/users/:id/lift-suspension", ...adminGuard, ctrl.liftOwnerSuspension.bind(ctrl));
 

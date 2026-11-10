@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { AdminService } from "../services/admin.service";
 import { OwnerCancellationService } from "../services/owner-cancellation.service";
+import { RefundRequestService } from "../services/refund-request.service";
 import { CatalogService } from "../services/catalog.service";
 import { sendSuccess, sendCreated } from "../helpers/response.helper";
 
 const adminService = new AdminService();
 const ownerCancellationService = new OwnerCancellationService();
+const refundRequestService = new RefundRequestService();
 const catalogService = new CatalogService();
 
 /** Joi coerces "true"/"false" on a query string; anything else means the filter was not sent. */
@@ -360,6 +362,33 @@ export class AdminController {
         status: status as string,
       });
       sendSuccess(res, "Payments retrieved", result.payments, 200, result.pagination);
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * Every refund request, for oversight.
+   *
+   * **Read-only on purpose.** What happens when an owner declines an early-return refund is an open
+   * question with the client (gap 6 in `CLIENT_DOCS_REVIEW.md`), so no override path has been
+   * invented here. An administrator who decides to refund anyway uses
+   * `PUT /admin/payments/:id/refund`, which already exists and already records who did it.
+   */
+  async listRefundRequests(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await refundRequestService.listForAdmin({
+        status: req.query.status ? String(req.query.status) : undefined,
+        kind: req.query.kind ? String(req.query.kind) : undefined,
+        page: req.query.page ? Number(req.query.page) : 1,
+        limit: req.query.limit ? Number(req.query.limit) : 20,
+      });
+      sendSuccess(res, "Refund requests retrieved", result.requests, 200, {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / result.limit),
+        hasNext: result.page * result.limit < result.total,
+        hasPrev: result.page > 1,
+      });
     } catch (err) { next(err); }
   }
 

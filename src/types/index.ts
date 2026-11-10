@@ -130,6 +130,8 @@ export interface IItem extends Document {
     geoSource?: "client" | "geocoded";
     /** How exact the point is, in the geocoder's own words. Server-maintained. */
     geoPrecision?: string;
+    /** IANA override for the listing's local time zone; normally absent. See timezone.helper.ts. */
+    timeZone?: string;
   };
   availability: {
     isAvailable: boolean;

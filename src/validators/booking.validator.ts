@@ -1,5 +1,6 @@
 import Joi from "joi";
 import { OWNER_CANCELLATION_REASONS } from "../models/owner-cancellation.model";
+import { REFUND_REQUEST_STATUSES } from "../models/refund-request.model";
 
 // POST /bookings/quote had no validator, so a malformed body produced a 200 with null prices.
 // Deliberately permissive about what the client already sends; it only rejects nonsense.
@@ -121,6 +122,44 @@ export const ownerCancelSchema = Joi.object({
 export const reviewCancellationSchema = Joi.object({
   excused: Joi.boolean().required(),
   note: Joi.string().min(3).max(500).required(),
+});
+
+/**
+ * A renter asking for money back after an early return.
+ *
+ * `amount` is in dollars, like every other money figure a client sends, and is converted to cents
+ * at the service boundary. `reason` is required and has a floor: the owner has to decide on this,
+ * and "pls refund" is not something anyone can judge.
+ */
+export const refundRequestSchema = Joi.object({
+  amount: Joi.number().positive().max(100000).required().messages({
+    "number.positive": "Ask for an amount above zero",
+    "any.required": "Say how much you are asking for",
+  }),
+  reason: Joi.string().min(10).max(1000).required().messages({
+    "string.min": "Explain why in at least a few words — the owner has to decide on this",
+    "any.required": "A reason is required",
+  }),
+});
+
+/**
+ * The owner's decision on a refund request.
+ *
+ * `amount` is optional and means "approve this much instead", which is the client's own answer:
+ * *"the owner may approve a specified amount or decline"*. It is capped at what was asked for — an
+ * owner cannot approve more than the renter requested — and is ignored on a decline.
+ */
+export const refundDecisionSchema = Joi.object({
+  approve: Joi.boolean().required(),
+  amount: Joi.number().positive().max(100000).optional(),
+  note: Joi.string().max(1000).allow("").optional(),
+});
+
+export const refundRequestQuerySchema = Joi.object({
+  status: Joi.string().valid(...REFUND_REQUEST_STATUSES).optional(),
+  role: Joi.string().valid("renter", "owner").optional(),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(50).default(20),
 });
 
 export const bookingQuerySchema = Joi.object({

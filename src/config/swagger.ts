@@ -342,6 +342,15 @@ const options: swaggerJsdoc.Options = {
                     lng: { type: "number", example: -73.5673 },
                   },
                 },
+                timeZone: {
+                  type: "string",
+                  example: "America/Toronto",
+                  description:
+                    "Rarely needed. The listing's time zone - the clock the cancellation windows " +
+                    "are measured against - is derived from the coordinates on every read. Set " +
+                    "this only to override a wrong derivation, which can happen within ~70 km of " +
+                    "a zone boundary. Must be a real IANA name or the request is refused.",
+                },
               },
             },
             tags: {
@@ -399,7 +408,7 @@ const options: swaggerJsdoc.Options = {
       { name: "Auth", description: "Authentication endpoints" },
       { name: "Users", description: "User profile management" },
       { name: "Items", description: "Item listing management" },
-      { name: "Bookings", description: "Booking management.\n\n**`status` and `paymentStatus` are independent.** `status` is the lifecycle\n(pending | accepted | active | completed | declined | cancelled) and says nothing about money;\n`paymentStatus` is unpaid | paid | failed. A paid booking stays `accepted`, so a client deciding\nwhether to offer Pay Now must check both - offering it on `status: accepted` alone kept the button\non screen after a successful charge. A second attempt is refused with 409, never double-charged.\n\n`paymentStatus` is written by the Stripe webhook (authoritative) and by POST /payments. It is\nabsent on bookings created before 2026-10-07; read a missing value as `unpaid`.\n\nNote that `active` is currently never set by any code path." },
+      { name: "Bookings", description: "Booking management.\n\n**`status` and `paymentStatus` are independent.** `status` is the lifecycle\n(pending | accepted | active | completed | declined | cancelled) and says nothing about money;\n`paymentStatus` is unpaid | paid | failed | partially_refunded | paid_out | refunded. A paid booking stays `accepted`, so a client deciding\nwhether to offer Pay Now must check both - offering it on `status: accepted` alone kept the button\non screen after a successful charge. A second attempt is refused with 409, never double-charged.\n\n`paymentStatus` is written by the Stripe webhook (authoritative) and by POST /payments. It is\nabsent on bookings created before 2026-10-07; read a missing value as `unpaid`.\n\nTest for 'not unpaid', never for equality with 'paid'. `partially_refunded` is reachable now (a cancellation 24-48h before the start refunds half the rental automatically) and `paid_out` becomes reachable when the charge model is switched; a client checking only for 'paid' would offer Pay Now on both.\n\nNote that `active` is currently never set by any code path." },
       { name: "Reviews", description: "Reviews and ratings" },
       {
         name: "Chat",

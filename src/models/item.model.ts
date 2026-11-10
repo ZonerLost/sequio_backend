@@ -108,6 +108,19 @@ const ItemSchema = new Schema<IItem>(
        * `building`. A client should draw a circle for a city and a pin for an address.
        */
       geoPrecision: { type: String },
+      /**
+       * An **override** for the listing's local time zone, as an IANA name.
+       *
+       * Normally absent, and normally should be: `timeZoneFor()` derives the zone from the
+       * coordinates on every read, so there is nothing to backfill and nothing to go stale when an
+       * owner edits their address. This field exists because the derivation is a longitude band
+       * rather than the IANA shapefile, so a listing close to a zone boundary can be an hour out —
+       * and an hour matters when the 48-hour cancellation window is measured against it.
+       *
+       * Set it and it wins. An unrecognised value is ignored with a warning rather than honoured,
+       * because a typo here would otherwise move every cancellation deadline on the listing.
+       */
+      timeZone: { type: String },
     },
     availability: {
       isAvailable: { type: Boolean, default: true },

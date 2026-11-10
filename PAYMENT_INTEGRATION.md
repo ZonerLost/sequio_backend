@@ -164,8 +164,20 @@ Use `data.pricing.totalAmount` for display on the confirmation button, and displ
 | `unpaid` | no successful charge yet | yes |
 | `paid` | charge succeeded | **no** |
 | `failed` | an attempt failed; they can retry | yes |
-| `refunded` | an admin refunded it, money is back with the renter | yes |
+| `partially_refunded` | some of it has come back — a 24–48h cancellation, or a refund the owner approved | **no** |
+| `paid_out` | the owner has been paid their share | **no** |
+| `refunded` | all of it is back with the renter | yes |
 | *absent* | booking predates the field (before 2026-10-07) | yes — treat as `unpaid` |
+
+> **Two of these are new and will break a client that tests `paymentStatus === "paid"`.**
+> `partially_refunded` is reachable **now**: a cancellation 24–48 hours before the start refunds half
+> the rental automatically. `paid_out` becomes reachable when the charge model is switched (see
+> below), and a client treating it as unpaid would offer Pay Now on a booking that is fully paid and
+> already settled with the owner.
+>
+> **Test for "not unpaid", not for "paid".** The safe check is
+> `paymentStatus && paymentStatus !== "unpaid" && paymentStatus !== "failed"`, or simply
+> `["unpaid", "failed"].includes(paymentStatus ?? "unpaid")` to decide whether to offer Pay Now.
 
 Treat a missing value as `unpaid`, never as paid. The worst case that way is offering Pay Now on a
 booking already paid, which the server refuses with **409** rather than charging twice. Assuming paid
@@ -293,6 +305,68 @@ export function useCheckout() {
   return { payForBooking };
 }
 ```
+
+---
+
+## 5b. Cancellations and refunds
+
+Three windows, measured against the **listing's local time zone** — not the device's, and not UTC.
+
+| Cancelled | Renter gets back |
+|---|---|
+| more than 48h before the rental starts | everything, fees and taxes included |
+| 24–48h before | 50% of the rental, automatically. The service fee is not refundable. The owner may choose to approve the rest. |
+| less than 24h before | nothing |
+
+### Show the numbers before the renter commits to anything
+
+- **`POST /bookings/quote`** now returns **`cancellationConditions`**: four sentences to show on the
+  booking screen, before the booking is made. Render them as given; do not re-word them per client.
+- **`GET /bookings/{id}/cancellation-quote`** returns what cancelling *right now* would refund, for
+  that specific booking. **Show this on the confirm-cancellation screen.** It is the same function the
+  cancellation itself uses, so the number shown is the number refunded.
+
+Everything in it is in **integer cents**. The fields worth rendering:
+
+| Field | What to do with it |
+|---|---|
+| `tier` | `full` / `partial` / `none` — drives the wording |
+| `refund.totalCents` | "You will get back $X" |
+| `ownerApprovableCents` | "The owner may choose to refund a further $Y" — only in the `partial` tier |
+| `startsAtLocal` | a human string already formatted in the listing's zone; prefer it over formatting `startsAt` yourself |
+| `timeZone` | the IANA name, if you format the deadline yourself |
+| `refundable: false` | nothing is coming back — either the booking was never paid, or it is the `none` tier |
+
+`PUT /bookings/{id}/cancel` is unchanged as a call and now returns a `cancellation` object with the
+`tier`, the `refundCents` actually returned, `ownerApprovableCents` and `refundOutstanding`.
+**`refundOutstanding: true` means the booking is cancelled but the money has not moved** — tell the
+renter support is on it rather than showing a refund that did not happen. It is also now allowed from
+`ready_for_handover`, not only `accepted`.
+
+### Asking for a refund after an early return
+
+**An early return refunds nothing by itself.** This is deliberate and is the client's own rule: a
+renter who hands the item back on day 5 of a 10-day rental has the right to *ask*, and nothing more.
+
+1. **`POST /bookings/{id}/refund-request`** — `{ amount, reason }`. `amount` is in **dollars**.
+   Requires the return to have been confirmed and to be before the agreed end date. Capped at the
+   rental plus delivery not already refunded; above the cap is a **400 naming the cap**, so show that
+   message rather than your own. One pending request per booking — a second is a **409**.
+2. **`PUT /bookings/refund-requests/{requestId}/decide`** — the **owner**, with
+   `{ approve: true }`, or `{ approve: true, amount: 25 }` to approve less, or
+   `{ approve: false, note }` to decline.
+3. **`PUT /bookings/refund-requests/{requestId}/withdraw`** — the renter changing their mind.
+4. **`GET /bookings/refund-requests`** — the caller's own, from **either** side, each tagged
+   `myRole` (`renter` | `owner`). Build both the renter's "waiting on the owner" list and the
+   owner's "needs your decision" list from this one call.
+   **`GET /bookings/{id}/refund-requests`** is the same thing scoped to one booking.
+
+A **decline is final**. There is no appeal screen to build, because there is no appeal process; show
+the owner's `decision.note` if they left one. A renter may ask again only after withdrawing, or if
+a previous request was decided.
+
+Notification types to handle: `booking_cancelled_refund`, `refund_requested`, `refund_approved`,
+`refund_declined`. All carry `bookingId`, and the last three carry `requestId`.
 
 ---
 

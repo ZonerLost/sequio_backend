@@ -270,6 +270,22 @@
  * /bookings/{id}/cancel:
  *   put:
  *     summary: Cancel a booking (renter only)
+ *     description: >
+ *       Cancels the booking **and settles the money** under the cancellation policy — see
+ *       `GET /bookings/{id}/cancellation-quote` for the same numbers in advance, which is what
+ *       should be shown before the renter confirms.
+ *
+ *
+ *       Allowed from `pending`, `accepted` and `ready_for_handover`. The response carries a
+ *       `cancellation` object with the `tier`, the `refundCents` actually returned,
+ *       `ownerApprovableCents` (the other half the owner may still approve, in the 24-48h band)
+ *       and `refundOutstanding`.
+ *
+ *
+ *       **The booking is cancelled first and the refund attempted second.** A refund Stripe refuses
+ *       leaves a cancelled booking and `refundOutstanding: true` for support to retry, rather than
+ *       failing the whole request and leaving the renter still committed to a rental they have
+ *       cancelled.
  *     tags: [Bookings]
  *     security:
  *       - BearerAuth: []
@@ -530,4 +546,251 @@
  *     responses:
  *       200:
  *         description: Photos uploaded
+ */
+
+/**
+ * @swagger
+ * /bookings/{id}/cancellation-quote:
+ *   get:
+ *     summary: What cancelling right now would refund
+ *     description: >
+ *       The cancellation policy applied to this booking at this moment, as numbers. **Show this
+ *       before the renter confirms a cancellation** — the requirement is that the refundable amount
+ *       is known in advance, not discovered afterwards. Readable by the owner too, because the same
+ *       response says what they would keep.
+ *
+ *
+ *       Three tiers, measured against the **listing's local time zone**: more than 48 hours before
+ *       the start refunds everything; 24 to 48 hours refunds 50% of the rental automatically and
+ *       the owner may approve the rest; under 24 hours refunds nothing.
+ *
+ *
+ *       `timeZoneSource` says where the clock came from — `listing` (an explicit override),
+ *       `coordinates` (derived, the normal case), `province` or `default`. `clockSource` says
+ *       whether the start time came from the booking's own pickup time or from the assumed 09:00
+ *       local. A client showing a deadline should show the local time, not a UTC one.
+ *
+ *
+ *       `refundable: false` with `apportionable: false` on a paid booking means the stored price
+ *       breakdown predates the fields this arithmetic needs; it cannot be split and support has to
+ *       refund by hand. Every amount is in **integer cents**.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The quote
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tier: { type: string, enum: [full, partial, none] }
+ *                     startsAt: { type: string, format: date-time }
+ *                     startsAtLocal: { type: string, example: "15 Nov 2026, 9:00 a.m." }
+ *                     timeZone: { type: string, example: America/Toronto }
+ *                     timeZoneSource: { type: string, enum: [listing, coordinates, province, default] }
+ *                     clockSource: { type: string, enum: [pickup_time, default_hour] }
+ *                     hoursUntilStart: { type: number, example: 36.5 }
+ *                     currency: { type: string, example: CAD }
+ *                     paidCents: { type: integer, example: 10459 }
+ *                     refundable: { type: boolean }
+ *                     apportionable: { type: boolean }
+ *                     refund:
+ *                       type: object
+ *                       properties:
+ *                         rentalCents: { type: integer }
+ *                         deliveryCents: { type: integer }
+ *                         feeCents: { type: integer }
+ *                         taxCents: { type: integer }
+ *                         totalCents: { type: integer }
+ *                     retained:
+ *                       type: object
+ *                       properties:
+ *                         ownerCents: { type: integer }
+ *                         platformCents: { type: integer }
+ *                         totalCents: { type: integer }
+ *                     ownerApprovableCents: { type: integer }
+ *                     conditions:
+ *                       type: array
+ *                       items: { type: string }
+ *       403:
+ *         description: Not a party to this booking
+ *       404:
+ *         description: Booking not found
+ */
+
+/**
+ * @swagger
+ * /bookings/{id}/refund-request:
+ *   post:
+ *     summary: Ask the owner for a refund after an early return
+ *     description: >
+ *       **An early return refunds nothing by itself.** A renter who hands the item back on day 5 of
+ *       a 10-day rental has the right to ask, and nothing more — this endpoint is that ask. The
+ *       owner approves all of it, approves less, or declines.
+ *
+ *
+ *       Requires the return to have been confirmed (`returned.at`) and to be **before** the agreed
+ *       end date: a rental that ran its course has no early return to refund. `amount` is in
+ *       dollars and is capped at the rental plus delivery not already refunded — the renter-side
+ *       service fee is not the owner's to give away. Asking for more than the cap is refused with
+ *       the cap named rather than silently reduced.
+ *
+ *
+ *       One pending request per booking, enforced by a unique index: a second returns **409**.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount, reason]
+ *             properties:
+ *               amount: { type: number, example: 40.00, description: Dollars }
+ *               reason: { type: string, minLength: 10, maxLength: 1000 }
+ *     responses:
+ *       201:
+ *         description: Request sent to the owner
+ *       400:
+ *         description: Not returned yet, not an early return, unpaid, or above the cap
+ *       403:
+ *         description: Only the renter may ask
+ *       409:
+ *         description: A request is already pending on this booking
+ */
+
+/**
+ * @swagger
+ * /bookings/{id}/refund-requests:
+ *   get:
+ *     summary: Refund requests on one booking
+ *     description: Every request ever made on this booking, newest first. Either party may read it.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The requests
+ *       403:
+ *         description: Not a party to this booking
+ */
+
+/**
+ * @swagger
+ * /bookings/refund-requests:
+ *   get:
+ *     summary: My refund requests, from either side
+ *     description: >
+ *       Both sides, like `GET /disputes/my`: an owner with a decision to make and a renter waiting
+ *       on one are looking at the same row, and each gets **`myRole`** (`renter` | `owner`).
+ *       Narrow it with `?role=`.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, approved, declined, withdrawn] }
+ *       - in: query
+ *         name: role
+ *         schema: { type: string, enum: [renter, owner] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 50 }
+ *     responses:
+ *       200:
+ *         description: The requests
+ */
+
+/**
+ * @swagger
+ * /bookings/refund-requests/{requestId}/decide:
+ *   put:
+ *     summary: Approve or decline a refund request (owner only)
+ *     description: >
+ *       The owner's decision. `approve: true` refunds the requested amount, or `amount` instead
+ *       when they want to approve less — capped at what was asked for.
+ *
+ *
+ *       **A decline is final.** The specification gives no escalation path, so none is invented: the
+ *       renter is told what the owner said, and the request stays visible at
+ *       `GET /admin/refund-requests` for an administrator who decides to refund by hand through
+ *       `PUT /admin/payments/{id}/refund`.
+ *
+ *
+ *       The decision is recorded **before** Stripe is called and stays recorded if Stripe fails —
+ *       an owner who agreed has agreed. `refundOutstanding: true` in the response means the money
+ *       has not moved and support must retry it.
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: requestId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [approve]
+ *             properties:
+ *               approve: { type: boolean }
+ *               amount: { type: number, description: Approve this much instead, in dollars }
+ *               note: { type: string, maxLength: 1000 }
+ *     responses:
+ *       200:
+ *         description: Decided
+ *       403:
+ *         description: Only the owner may decide
+ *       409:
+ *         description: Already decided
+ */
+
+/**
+ * @swagger
+ * /bookings/refund-requests/{requestId}/withdraw:
+ *   put:
+ *     summary: Withdraw a pending refund request (renter only)
+ *     tags: [Bookings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: requestId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Withdrawn
+ *       404:
+ *         description: No pending request of yours on this booking
  */

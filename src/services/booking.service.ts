@@ -9,10 +9,13 @@ import {
 import { AppError } from "../middleware/error.middleware";
 import { logger } from "../config/logger";
 import { OwnerCancellationService } from "./owner-cancellation.service";
+import { CancellationService } from "./cancellation.service";
+import { RefundRequestService } from "./refund-request.service";
 import { HTTP_STATUS } from "../config/constants";
 import { IBooking } from "../models/booking.model";
 import { buildPagination } from "../helpers/pagination.helper";
 import { ATUSSA_FEE_EXPLAINER, calculatePriceBreakdown } from "../helpers/pricing.helper";
+import { cancellationConditions } from "../helpers/cancellation.helper";
 import { EcoService } from "./eco.service";
 import {
   notifyBookingRequest,
@@ -21,10 +24,13 @@ import {
   notifyBookingCancelled,
   notifyBookingCompleted,
   notifyReturnTimeDisputed,
+  notifyCancellationSettlement,
 } from "../helpers/notification.triggers";
 
 const ecoService = new EcoService();
 const ownerCancellationService = new OwnerCancellationService();
+const cancellationService = new CancellationService();
+const refundRequestService = new RefundRequestService();
 const bookingRepo = new BookingRepository();
 const itemRepo = new ItemRepository();
 
@@ -217,13 +223,26 @@ export class BookingService {
     return withSignedBookingPhotos(result);
   }
 
+  /**
+   * The renter cancels, and the refund policy decides what that costs them.
+   *
+   * **The order is deliberate and matches the owner-cancellation path**: the booking is cancelled
+   * first, then the money is settled. A refund Stripe refuses must not leave the booking live, the
+   * renter still committed and the item blocked — it leaves a cancelled booking and a visible
+   * `refundOutstanding` that support can retry.
+   *
+   * `ready_for_handover` is cancellable too. It is the state a booking is in during the hours
+   * immediately before pickup, which is exactly the window the under-24h tier describes; refusing
+   * there would mean a renter who cannot collect the item has no way out, and the policy already
+   * answers what it costs them (nothing comes back).
+   */
   async cancelBooking(bookingId: string, renterId: string, reason?: string) {
     const booking = await bookingRepo.findById(bookingId);
     if (!booking) throw new AppError("Booking not found", HTTP_STATUS.NOT_FOUND);
     if (getId(booking.renter) !== renterId) {
       throw new AppError("Access denied", HTTP_STATUS.FORBIDDEN);
     }
-    if (!["pending", "accepted"].includes(booking.status)) {
+    if (!["pending", "accepted", "ready_for_handover"].includes(booking.status)) {
       throw new AppError("Booking cannot be cancelled at this stage", HTTP_STATUS.BAD_REQUEST);
     }
 
@@ -232,13 +251,49 @@ export class BookingService {
       cancelledAt: new Date(),
     } as any);
 
+    const settlement = await cancellationService.settle(bookingId, "renter");
+
+    // The 24-48h band leaves the renter with a claim on the other half that only the owner can
+    // grant. Opening it here, pre-filled, is what turns "the owner may approve" into something an
+    // owner can actually do.
+    if (settlement.tier === "partial" && settlement.ownerApprovableCents > 0) {
+      await refundRequestService.openCancellationBalance(bookingId, settlement.quote);
+    }
+
     const itemId = getId(booking.item);
     const item = await itemRepo.findById(itemId);
     const renter = await UserModel.findById(renterId).select("firstName lastName");
     const renterName = renter ? `${renter.firstName} ${renter.lastName}` : "Someone";
     notifyBookingCancelled(getId(booking.owner), renterName, item?.title ?? "your item", bookingId).catch(() => {});
+    // A second notification, carrying the money. The first says a booking is off; an owner who
+    // keeps part of the price, or is being asked to give the rest back, needs to be told which.
+    notifyCancellationSettlement(
+      getId(booking.owner),
+      item?.title ?? "your item",
+      bookingId,
+      cancellationService.settlementMessage(settlement.quote, settlement)
+    ).catch(() => {});
 
-    return withSignedBookingPhotos(result);
+    // Awaited: `withSignedBookingPhotos` is async, and spreading the promise instead of its value
+    // would put `then` on the response and drop every booking field.
+    const signed = (await withSignedBookingPhotos(result)) as unknown as Record<string, unknown>;
+
+    return {
+      ...signed,
+      cancellation: {
+        tier: settlement.tier,
+        refundCents: settlement.refundCents,
+        refundOutstanding: settlement.refundOutstanding,
+        ownerApprovableCents: settlement.ownerApprovableCents,
+        timeZone: settlement.quote.timeZone,
+        hoursBeforeStart: settlement.quote.hoursUntilStart,
+      },
+    };
+  }
+
+  /** What cancelling right now would refund, for either party. See `cancellation.service.ts`. */
+  async cancellationQuote(bookingId: string, userId: string) {
+    return cancellationService.quote(bookingId, userId);
   }
 
   async completeBooking(bookingId: string, ownerId: string) {
@@ -459,6 +514,12 @@ export class BookingService {
       // Empty under 2026-11: the renter sees no fee line, so there is nothing to explain and the
       // "?" should not be rendered at all.
       atussaFeeExplainer: pricing.model === "2026-11" ? "" : ATUSSA_FEE_EXPLAINER,
+      /**
+       * The cancellation conditions, served here because the client's requirement is that they are
+       * shown **before** the booking is made — and this endpoint is what the Book screen already
+       * calls. One wording from the API rather than three copies in three clients.
+       */
+      cancellationConditions: cancellationConditions(),
     };
   }
 }

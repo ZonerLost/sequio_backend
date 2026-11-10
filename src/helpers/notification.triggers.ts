@@ -209,3 +209,97 @@ export async function notifyMessageReceived(
     data: { conversationId, screen: "chat" },
   });
 }
+
+/**
+ * Tells the owner a renter cancelled, and what the policy did about the money.
+ *
+ * Separate from `notifyBookingCancelled`, which says only that it happened. An owner whose booking
+ * is cancelled 30 hours before the start keeps part of the price and is being asked to decide about
+ * the rest — "X cancelled" alone leaves them to work that out from a balance statement later.
+ */
+export async function notifyCancellationSettlement(
+  ownerId: string,
+  itemTitle: string,
+  bookingId: string,
+  body: string
+): Promise<void> {
+  if (!ownerId) return;
+  await notificationService.send({
+    userId: ownerId,
+    type: "booking_cancelled_refund",
+    title: `Cancelled: ${itemTitle}`,
+    body,
+    data: { bookingId, screen: "booking_detail" },
+  });
+}
+
+/**
+ * Tells the owner a refund is waiting on their decision.
+ *
+ * The amount is in the body on purpose: this is a request to give money back, and a notification
+ * that does not say how much is one the owner has to open the app to understand.
+ */
+export async function notifyRefundRequested(
+  ownerId: string,
+  renterName: string,
+  itemTitle: string,
+  bookingId: string,
+  requestId: string,
+  amountLabel: string
+): Promise<void> {
+  if (!ownerId) return;
+  await notificationService.send({
+    userId: ownerId,
+    type: "refund_requested",
+    title: "Refund requested",
+    body: `${renterName} is asking for ${amountLabel} back on "${itemTitle}". You can approve part of it, all of it, or decline.`,
+    data: { bookingId, requestId, screen: "booking_detail" },
+  });
+}
+
+/** Tells the renter the owner agreed, and to how much — which may be less than they asked for. */
+export async function notifyRefundApproved(
+  renterId: string,
+  itemTitle: string,
+  bookingId: string,
+  requestId: string,
+  amountLabel: string,
+  partial: boolean
+): Promise<void> {
+  if (!renterId) return;
+  await notificationService.send({
+    userId: renterId,
+    type: "refund_approved",
+    title: "Refund approved",
+    body: partial
+      ? `The owner approved ${amountLabel} of your refund request for "${itemTitle}". It will appear on your original payment method.`
+      : `The owner approved your ${amountLabel} refund for "${itemTitle}". It will appear on your original payment method.`,
+    data: { bookingId, requestId, screen: "booking_detail" },
+  });
+}
+
+/**
+ * Tells the renter the owner said no.
+ *
+ * The owner's note is included when they left one. A decline with no reason is the message most
+ * likely to become a support ticket, and the specification gives the renter no appeal path — so the
+ * least this can do is pass on what the owner actually said.
+ */
+export async function notifyRefundDeclined(
+  renterId: string,
+  itemTitle: string,
+  bookingId: string,
+  requestId: string,
+  note?: string
+): Promise<void> {
+  if (!renterId) return;
+  await notificationService.send({
+    userId: renterId,
+    type: "refund_declined",
+    title: "Refund declined",
+    body: note
+      ? `The owner declined your refund request for "${itemTitle}": ${note}`
+      : `The owner declined your refund request for "${itemTitle}".`,
+    data: { bookingId, requestId, screen: "booking_detail" },
+  });
+}

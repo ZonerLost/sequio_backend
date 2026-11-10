@@ -169,6 +169,11 @@
       "key": "stripeAccountId",
       "value": "acct_000000000000",
       "type": "string"
+    },
+    {
+      "key": "refundRequestId",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -2596,6 +2601,209 @@
               }
             }
           ]
+        },
+        {
+          "name": "Cancellation quote",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancellation-quote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}",
+                "cancellation-quote"
+              ]
+            },
+            "description": "What cancelling right now would refund. SHOW THIS BEFORE the renter confirms — the requirement is that the refundable amount is known in advance.\n\nThree tiers, measured against the LISTING'S LOCAL TIME ZONE: more than 48h before the start refunds everything, 24-48h refunds 50% of the rental and leaves the owner able to approve the rest, under 24h refunds nothing.\n\n`timeZoneSource` says whether the zone came from an override, the coordinates, the province or the platform default. `clockSource` says whether the start time came from the booking's pickup time or the assumed 09:00 local. Every amount is in integer cents. Readable by the owner too — the same numbers say what they keep."
+          },
+          "response": []
+        },
+        {
+          "name": "Request a refund (early return)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 40,\n  \"reason\": \"Returned it five days early, the job finished sooner than expected\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/refund-request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}",
+                "refund-request"
+              ]
+            },
+            "description": "AN EARLY RETURN REFUNDS NOTHING BY ITSELF. This is the renter asking; the owner approves all of it, approves less, or declines.\n\nRequires the return to have been confirmed (`PUT /bookings/:id/return`) and to be BEFORE the agreed end date. `amount` is in dollars and is capped at the rental plus delivery not already refunded — the renter-side service fee is not the owner's to give away. Asking above the cap is a 400 naming the cap. One pending request per booking: a second is a 409."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Saves the request id so the approve/decline/withdraw requests below can run as-is.",
+                  "if (pm.response.code === 201) {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d && d._id) pm.collectionVariables.set('refundRequestId', d._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refund requests on this booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/refund-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}",
+                "refund-requests"
+              ]
+            },
+            "description": "Every request ever made on this booking, newest first. Either party may read it."
+          },
+          "response": []
+        },
+        {
+          "name": "My refund requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/refund-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "refund-requests"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                },
+                {
+                  "key": "role",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Both sides, like `GET /disputes/my`: each row carries `myRole` (renter | owner), because an owner with a decision to make and a renter waiting on one are looking at the same request.\n\nNote this route is registered ABOVE `/:id` in the router — a single-segment path below it would be swallowed by the booking-detail handler and answer \"Invalid ID format\"."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve a refund request (owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approve\": true,\n  \"amount\": 25,\n  \"note\": \"Happy to give back half of what you asked\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/refund-requests/{{refundRequestId}}/decide",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "refund-requests",
+                "{{refundRequestId}}",
+                "decide"
+              ]
+            },
+            "description": "The owner's decision. `amount` is optional and means \"approve this much instead\", capped at what was asked for.\n\nThe decision is recorded BEFORE Stripe is called and stays recorded if Stripe fails — an owner who agreed has agreed. `refundOutstanding: true` means the money has not moved and support must retry it."
+          },
+          "response": []
+        },
+        {
+          "name": "Decline a refund request (owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approve\": false,\n  \"note\": \"The item was held for the full week and I turned down two other bookings\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/refund-requests/{{refundRequestId}}/decide",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "refund-requests",
+                "{{refundRequestId}}",
+                "decide"
+              ]
+            },
+            "description": "A DECLINE IS FINAL. The specification gives no escalation path, so none was invented: the renter is told what the owner said, and the request stays visible at `GET /admin/refund-requests` for an administrator who decides to refund by hand through `PUT /admin/payments/:id/refund`."
+          },
+          "response": []
+        },
+        {
+          "name": "Withdraw a refund request (renter)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/refund-requests/{{refundRequestId}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "refund-requests",
+                "{{refundRequestId}}",
+                "withdraw"
+              ]
+            },
+            "description": "A renter changing their mind before the owner has decided. Withdrawing frees the booking to be asked about again — the unique index is on pending requests only."
+          },
+          "response": []
         }
       ]
     },
@@ -4850,6 +5058,45 @@
               }
             }
           ]
+        },
+        {
+          "name": "Refund requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/refund-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "refund-requests"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "kind",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "READ-ONLY, deliberately. What happens when an owner declines an early-return refund is an open question with the client, so no override route exists here. An administrator who decides to refund anyway uses `PUT /admin/payments/:id/refund`."
+          },
+          "response": []
         }
       ]
     },

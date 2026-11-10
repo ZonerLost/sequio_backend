@@ -1,10 +1,28 @@
 import Joi from "joi";
+import { isKnownTimeZone } from "../helpers/timezone.helper";
 
 /**
  * Kilometres. A cap exists so a client that mistakes the unit and sends metres gets a 400 naming
  * the limit, instead of silently receiving the entire database as "nearby".
  */
 const MAX_RADIUS_KM = 500;
+
+/**
+ * An override for the listing's local time zone — the clock the cancellation windows are measured
+ * against.
+ *
+ * Rarely needed: the zone is derived from the coordinates on every read. It exists for a listing
+ * close to a zone boundary, where a longitude band can be an hour out.
+ *
+ * Checked against the real IANA database here rather than accepted and warned about later. A typo
+ * would otherwise move every cancellation deadline on the listing, and the owner would have no way
+ * to tell: `timeZoneFor` ignores an unknown value and carries on with the derived one.
+ */
+const timeZoneSchema = Joi.string()
+  .custom((value, helpers) => (isKnownTimeZone(value) ? value : helpers.error("string.timeZone")))
+  .messages({
+    "string.timeZone": "Not a recognised time zone name — use an IANA name such as America/Toronto",
+  });
 
 const deliveryPricingTierSchema = Joi.object({
   radius: Joi.number().min(1).required(),
@@ -51,6 +69,7 @@ export const createItemSchema = Joi.object({
       lat: Joi.number().required(),
       lng: Joi.number().required(),
     }).optional(),
+    timeZone: timeZoneSchema.optional(),
   }).required(),
   deliveryOptions: deliveryOptionsSchema.default({ pickup: true, delivery: false }),
   availability: Joi.object({
@@ -85,6 +104,7 @@ export const updateItemSchema = Joi.object({
       lat: Joi.number(),
       lng: Joi.number(),
     }).optional(),
+    timeZone: timeZoneSchema.allow(null, "").optional(),
   }).optional(),
   deliveryOptions: deliveryOptionsSchema.optional(),
   bookingType: Joi.string().valid("manual", "instant").optional(),

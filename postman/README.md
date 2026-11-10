@@ -1,12 +1,24 @@
 # Postman collection
 
-`Atussa-API.postman_collection.json` covers **every one of the 115 routes** in `src/routes/` — plus
-one extra variant, *Browse listings nearby*, because `GET /items` behaves differently enough with a
-centre supplied (a radius circle, `distanceKm` on every row, `sortBy=distance`) to be worth its own
-request —
-it is generated from the route table, so nothing is missed — with a filled-in example body on
-every request that takes one. Each body was checked against the same Joi schema the route
-validates with, so a request either passes validation or the schema changed.
+`Atussa-API.postman_collection.json` holds **130 requests** against the **157 routes** in
+`src/routes/`, with a filled-in example body on every request that takes one, each checked against
+the same Joi schema its route validates with.
+
+> **It is no longer complete, and this is the honest number.** The collection was generated from the
+> route table and covered all 115 routes that existed when it was built. It has since fallen ~30
+> routes behind — the catalogue admin dictionary (`/admin/catalog/*`), the November booking lifecycle
+> (`handover`, `return`, `return/dispute`, `owner-cancel`) and the Stripe charging endpoints are the
+> bulk of what is missing. **The generator is gone**: it lived in a session scratchpad that was
+> cleared, along with the four verification suites `CLAUDE.md` used to cite. The Phase 2d/2e refund
+> requests were added by hand, which is why the count is exact rather than "every route".
+>
+> Rebuilding the generator from `src/routes/*.ts` is a contained piece of work and is the right fix.
+> Until then, treat a missing endpoint as a gap in this file, not as an endpoint that does not exist;
+> `/api-docs.json` on the running server is generated and therefore complete.
+
+One request is an extra variant rather than a route: *Browse listings nearby*, because `GET /items`
+behaves differently enough with a centre supplied (a radius circle, `distanceKm` on every row,
+`sortBy=distance`) to be worth its own request.
 
 ## Import
 
@@ -59,10 +71,14 @@ Postman's **Body → form-data** tab. JPEG/PNG/WebP, 5 MB each.
 
 ## Regenerating
 
-The collection is built from `src/routes/*.ts`, so after adding a route, rebuild rather than
-hand-editing the JSON. The generator and its two verification passes (every route covered; every
-body and query example valid against its Joi schema) live with the session scratchpad scripts
-`build-collection.cjs`, `validate-bodies.cjs`, `validate-queries.cjs`.
+**The generator no longer exists.** It and its two verification passes (every route covered; every
+body and query example valid against its Joi schema) were `build-collection.cjs`,
+`validate-bodies.cjs` and `validate-queries.cjs` in a session scratchpad that has been cleared. Do
+not go looking for them.
+
+Until one is written again, a new route is added to this JSON by hand, and its example body is
+checked against its own Joi schema — `scripts/probe-postman-2d.cjs` is the pattern, and it is a
+dozen lines. Adding a route without doing either is how the gap above opened.
 
 Descriptions call out the traps — the routes with **no validation** (`PUT /disputes/admin/:id/status`,
 `POST /bookings/quote`, the RevenueCat webhook), the fields that are stored but never read, and the

@@ -50,6 +50,19 @@ export interface IPayment extends Document {
   receiptUrl?: string;
   refundedAt?: Date;
   refundReason?: string;
+  /**
+   * How much of this payment has been refunded so far, **in dollars like `amount`**.
+   *
+   * Dollars, not cents, deliberately: the number a reader compares it to is `amount`, a few lines
+   * up, and one model holding the same quantity in two units is how a 100x error gets written.
+   * Every calculation is done in integer cents and converted here at the boundary.
+   *
+   * It accumulates, because a booking can be refunded more than once now: half the rental on a
+   * 24–48h cancellation, then the other half if the owner approves it. A **partial** refund leaves
+   * `status` as `completed` — the payment is still the one completed payment for that booking, and
+   * flipping it to `refunded` would free the unique index and let the booking take a second one.
+   */
+  refundedAmount?: number;
   stripePaymentIntentId?: string;
   stripeClientSecret?: string;
   stripeTransferId?: string;
@@ -127,6 +140,9 @@ const PaymentSchema = new Schema<IPayment>(
     receiptUrl: { type: String },
     refundedAt: { type: Date },
     refundReason: { type: String },
+    // No default: a missing value means "nothing refunded", and a default would only apply to new
+    // documents anyway (DO-NOT #13). Readers must treat absent as zero.
+    refundedAmount: { type: Number },
     stripePaymentIntentId: { type: String, sparse: true, index: true },
     stripeClientSecret: { type: String },
     stripeTransferId: { type: String },

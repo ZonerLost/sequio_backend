@@ -658,3 +658,41 @@
  *       200:
  *         description: Payment refunded
  */
+
+/**
+ * @swagger
+ * /admin/refund-requests:
+ *   get:
+ *     summary: Every refund request, for oversight
+ *     description: >
+ *       Read-only, deliberately. What happens when an owner declines an early-return refund is an
+ *       open question with the client, so no override route has been built here. An administrator
+ *       who decides to refund anyway uses `PUT /admin/payments/{id}/refund`, which already exists
+ *       and already records who did it.
+ *
+ *
+ *       Each row carries the frozen `context` of the cancellation that opened it, where there was
+ *       one, and the booking's own `cancellation` record — which is what explains the tier, the
+ *       time zone the window was measured in, and what the owner retained.
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, approved, declined, withdrawn] }
+ *       - in: query
+ *         name: kind
+ *         schema: { type: string, enum: [cancellation_balance, early_return] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: The requests
+ *       403:
+ *         description: Admin only
+ */
