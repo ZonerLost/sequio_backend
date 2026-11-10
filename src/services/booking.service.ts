@@ -16,6 +16,12 @@ import { IBooking } from "../models/booking.model";
 import { buildPagination } from "../helpers/pagination.helper";
 import { ATUSSA_FEE_EXPLAINER, calculatePriceBreakdown } from "../helpers/pricing.helper";
 import { cancellationConditions } from "../helpers/cancellation.helper";
+import {
+  AGE_REFUSAL_MESSAGE,
+  UNDERAGE_REFUSAL_MESSAGE,
+  ageStatusOf,
+  taxRegistrationSnapshot,
+} from "../helpers/compliance.helper";
 import { EcoService } from "./eco.service";
 import {
   notifyBookingRequest,
@@ -79,6 +85,24 @@ export class BookingService {
       discountCode?: string;
     }
   ) {
+    /**
+     * The 18+ check, at the point where it matters rather than at the door.
+     *
+     * Renting is a contract, so this is the right place for it — but note what it does **not** do:
+     * it does not block anyone from signing in, browsing or messaging. No account on this platform
+     * has a date of birth, so a check at login would be an outage rather than a policy. Under the
+     * default `AGE_VERIFICATION=off` this refuses nobody; see `compliance.helper.ts`.
+     */
+    const renterAge = ageStatusOf(
+      await UserModel.findById(renterId).select("dateOfBirth").lean()
+    );
+    if (renterAge.blocked) {
+      throw new AppError(
+        renterAge.needsDateOfBirth ? AGE_REFUSAL_MESSAGE : UNDERAGE_REFUSAL_MESSAGE,
+        HTTP_STATUS.FORBIDDEN
+      );
+    }
+
     const item = await itemRepo.findById(data.itemId);
     if (!item) throw new AppError("Item not found", HTTP_STATUS.NOT_FOUND);
     if (!item.isActive || !item.availability.isAvailable) {
@@ -132,6 +156,22 @@ export class BookingService {
     const deliveryFee = data.deliveryType === "delivery" ? calculateDeliveryFee() : 0;
     const pricing = calculatePricing(item.dailyRate, totalDays, deliveryFee, discountPercent);
 
+    /**
+     * The owner's tax-registration status, frozen onto the booking.
+     *
+     * Nothing reads it yet — the tax base is unconfirmed, so there is no allocation rule to apply —
+     * but it has to be captured **now** or it is gone. An owner who registers for QST next month
+     * must not retroactively change how a rental that has already happened was treated, and the
+     * only way to guarantee that is to record what was true when the booking was made. Same rule as
+     * `pricing`, which is stored and never recomputed for exactly this reason.
+     *
+     * `null` when the owner has never been asked, so the field stays absent rather than recording a
+     * confident "not registered" for somebody who simply has not answered.
+     */
+    const ownerTaxRegistration = taxRegistrationSnapshot(
+      await UserModel.findById(itemOwnerId).select("taxRegistration").lean()
+    );
+
     const booking = await bookingRepo.create({
       item: item._id,
       renter: renterId as any,
@@ -146,6 +186,7 @@ export class BookingService {
       pickupTimeFrom: data.pickupTimeFrom,
       pickupTimeTo: data.pickupTimeTo,
       pricing,
+      ...(ownerTaxRegistration ? { ownerTaxRegistration } : {}),
       discountCode: data.discountCode,
       status: "pending",
     });

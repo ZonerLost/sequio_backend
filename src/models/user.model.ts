@@ -12,7 +12,42 @@ const UserSchema = new Schema<IUser>(
     phone: { type: String, trim: true },
     profilePhoto: { type: String },
     bio: { type: String, trim: true },
+    /**
+     * Optional on the schema and load-bearing for the 18+ requirement, which is an uncomfortable
+     * combination worth explaining.
+     *
+     * It cannot be `required`: all 37 existing accounts have none, and mongoose `required` does not
+     * run on the update paths this codebase uses anyway (DO-NOT #4). The rule is enforced in the
+     * validators and in `compliance.helper.ts`, which is also where the decision about existing
+     * accounts lives. **Absent means "never asked", not "under 18"** — the two must not be
+     * conflated, because one is a gap in our data and the other is a reason to refuse service.
+     */
     dateOfBirth: { type: Date },
+    /**
+     * Whether this owner is registered for GST/HST and QST, and their numbers.
+     *
+     * The client's instruction is that tax allocation depends on it. **Nothing in the pricing code
+     * reads this yet, deliberately**: their tax base is still unconfirmed in writing, and building
+     * an allocation rule on an unconfirmed base collects the right amount while remitting the wrong
+     * tax. The fields exist, are format-validated, and are snapshotted onto each booking so a later
+     * change cannot rewrite a rental that has already happened.
+     *
+     * `verifiedAt` is set by an administrator, never by code: only the CRA and Revenu Québec can
+     * confirm a number is real, and neither offers an API. A format check proves shape, not
+     * existence.
+     *
+     * The whole object is absent until the owner answers. Absent is unknown; `isRegistered: false`
+     * is them saying no (DO-NOT #13).
+     */
+    taxRegistration: {
+      isRegistered: { type: Boolean },
+      gstNumber: { type: String, trim: true },
+      qstNumber: { type: String, trim: true },
+      declaredAt: { type: Date },
+      verifiedAt: { type: Date },
+      verifiedBy: { type: Schema.Types.ObjectId, ref: "User" },
+      verificationNote: { type: String, maxlength: 500 },
+    },
     location: {
       address: { type: String, trim: true },
       city: { type: String },

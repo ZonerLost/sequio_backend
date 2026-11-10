@@ -275,6 +275,14 @@ get wrong once and painful to undo.
   grandfathered.
 - **Owner tax registration** — fields, number-format validation, and behaviour when status changes
   mid-rental.
+
+**The first two were built 2026-11-10.** The decision the 18+ check needed is now a switch —
+`AGE_VERIFICATION=off | new_accounts | all`, defaulting to `off` — because the answer turned out to
+depend on a number nobody had looked up: **zero of 37 accounts have a date of birth, including all 12
+owners**, so blocking on its absence is an outage rather than a policy. Move to `new_accounts` once
+the app ships a date-of-birth field. Tax registration stores and validates the numbers, snapshots the
+status onto each booking so a mid-rental change cannot rewrite history, and **deliberately changes no
+price** while the tax base is unconfirmed. See the Compliance section of `CLAUDE.md`.
 - **Legal pages** served in the app, from final text rather than the current drafts.
 - **Bilingual strings** everywhere.
 

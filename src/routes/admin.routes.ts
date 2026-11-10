@@ -4,6 +4,7 @@ import { authenticate, authorize } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import Joi from "joi";
 import { reviewCancellationSchema } from "../validators/booking.validator";
+import { taxRegistrationReviewSchema } from "../validators/compliance.validator";
 import {
   createCategorySchema,
   updateCategorySchema,
@@ -100,6 +101,16 @@ router.put("/users/:id/role", ...adminGuard, validate(roleSchema), ctrl.updateUs
 router.put("/users/:id/ban", ...adminGuard, ctrl.banUser.bind(ctrl));
 router.put("/users/:id/unban", ...adminGuard, ctrl.unbanUser.bind(ctrl));
 router.put("/users/:id/verify-identity", ...adminGuard, ctrl.verifyIdentity.bind(ctrl));
+/**
+ * Confirming an owner's GST/QST registration. A human step: the format is checked in code, but only
+ * the CRA and Revenu Québec can confirm a number exists, and neither offers an API.
+ */
+router.put(
+  "/users/:id/tax-registration",
+  ...adminGuard,
+  validate(taxRegistrationReviewSchema),
+  ctrl.reviewTaxRegistration.bind(ctrl)
+);
 router.delete("/users/:id", ...adminGuard, ctrl.deleteUser.bind(ctrl));
 
 // ── Items ─────────────────────────────────────────────────

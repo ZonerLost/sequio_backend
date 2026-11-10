@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { dateOfBirthSchema, dateOfBirthRequiredAtSignup } from "./compliance.validator";
 
 export const registerSchema = Joi.object({
   email: Joi.string().email().required().messages({
@@ -22,6 +23,16 @@ export const registerSchema = Joi.object({
     "any.required": "Last name is required",
   }),
   language: Joi.string().default("en"),
+  /**
+   * Required only when `AGE_VERIFICATION` says so, which it does not by default.
+   *
+   * The deployed Flutter app has no date-of-birth field, so making this unconditionally required
+   * would 400 every sign-up from it. The rule that is **not** conditional: a date of birth that is
+   * supplied and under 18 is refused whatever the mode.
+   */
+  dateOfBirth: dateOfBirthRequiredAtSignup()
+    ? dateOfBirthSchema.required().messages({ "any.required": "Your date of birth is required" })
+    : dateOfBirthSchema.optional(),
 });
 
 export const loginSchema = Joi.object({

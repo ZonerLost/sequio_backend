@@ -4,6 +4,15 @@
  *   post:
  *     tags: [Auth]
  *     summary: Register a new user
+ *     description: >
+ *       `dateOfBirth` is **optional by default and refused if it says under 18**.
+ *
+ *
+ *       It becomes required when `AGE_VERIFICATION` is set to `new_accounts` or `all`, which it is
+ *       not today: the deployed app has no date-of-birth field, so requiring it would 400 every
+ *       sign-up. Send it as soon as the app can, because the alternative is an account that has to
+ *       be prompted later — `compliance.age.needsDateOfBirth` on the profile says when that is the
+ *       case.
  *     description: Creates a new user account and sends OTP to email for verification
  *     security: []
  *     requestBody:

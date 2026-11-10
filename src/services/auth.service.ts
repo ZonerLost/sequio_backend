@@ -14,6 +14,7 @@ import {
 } from "../helpers/email.helper";
 import { AppError } from "../middleware/error.middleware";
 import { HTTP_STATUS, CONSTANTS } from "../config/constants";
+import { UNDERAGE_REFUSAL_MESSAGE, isAdult } from "../helpers/compliance.helper";
 import { logger } from "../config/logger";
 import { ENV } from "../config/env";
 import bcrypt from "bcryptjs";
@@ -32,10 +33,23 @@ export class AuthService {
     firstName: string;
     lastName: string;
     language: string;
+    dateOfBirth?: Date;
   }) {
     const emailExists = await userRepo.emailExists(data.email);
     if (emailExists)
       throw new AppError("Email already registered", HTTP_STATUS.CONFLICT);
+
+    /**
+     * The 18+ check, again.
+     *
+     * `registerSchema` already refuses an under-18 date of birth, so this is defence in depth — but
+     * it is the right kind: the architecture puts business rules in the service, and a future caller
+     * that reaches `register()` without going through that validator would otherwise create an
+     * account the Terms forbid. It costs one comparison.
+     */
+    if (data.dateOfBirth && !isAdult(data.dateOfBirth)) {
+      throw new AppError(UNDERAGE_REFUSAL_MESSAGE, HTTP_STATUS.FORBIDDEN);
+    }
 
     const user = await userRepo.create({
       email: data.email,
@@ -44,6 +58,7 @@ export class AuthService {
       lastName: data.lastName,
       language: (data.language as "en" | "fr") ?? "en",
       authProvider: "email",
+      ...(data.dateOfBirth ? { dateOfBirth: new Date(data.dateOfBirth) } : {}),
     });
     await this.sendVerificationOTP(user);
 

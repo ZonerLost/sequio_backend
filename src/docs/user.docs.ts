@@ -291,3 +291,76 @@
  *       404:
  *         description: Address not found
  */
+
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     ComplianceStatus:
+ *       type: object
+ *       description: >
+ *         Returned on `GET /users/profile` and on a profile update, as `compliance.age`. It is what
+ *         tells a client whether to prompt for a date of birth, and whether the account can rent or
+ *         list at all.
+ *
+ *
+ *         **`needsDateOfBirth` is true for every account on the platform today** — the field has
+ *         existed since launch, was never required and was never read. `blocked` is false for all of
+ *         them, and stays false until the client decides what happens to accounts that predate the
+ *         18+ requirement.
+ *
+ *
+ *         Prompt on `needsDateOfBirth`. Refuse on `blocked`. Do not infer either from the other.
+ *       properties:
+ *         ageVerified:
+ *           type: boolean
+ *           description: A date of birth is on file **and** it clears the minimum.
+ *         needsDateOfBirth:
+ *           type: boolean
+ *           description: No date of birth at all. Prompt for one; do not block.
+ *         blocked:
+ *           type: boolean
+ *           description: >
+ *             Cannot rent or list right now. An account with **no** date of birth is blocked only
+ *             under `AGE_VERIFICATION=all`; one whose date of birth is under 18 is blocked always.
+ *         minimumAge: { type: integer, example: 18 }
+ *         mode:
+ *           type: string
+ *           enum: [off, new_accounts, all]
+ *           description: Which policy is in force, so a refusal can be explained accurately.
+ *     TaxRegistration:
+ *       type: object
+ *       description: >
+ *         An owner's GST/HST and QST registration, set through `PUT /users/profile`.
+ *
+ *
+ *         **Nothing in the pricing code reads this yet, deliberately.** The client's tax base is
+ *         still unconfirmed in writing, and an allocation rule built on an unconfirmed base collects
+ *         the right amount while remitting the wrong tax. The fields are stored, format-validated,
+ *         and snapshotted onto each booking so a later change cannot rewrite a rental that already
+ *         happened.
+ *
+ *
+ *         `verifiedAt`, `verifiedBy` and `verificationNote` are **read-only** here — an owner
+ *         cannot verify their own registration, and sending them is silently discarded. They are set
+ *         by `PUT /admin/users/{id}/tax-registration`.
+ *       required: [isRegistered]
+ *       properties:
+ *         isRegistered:
+ *           type: boolean
+ *           description: >
+ *             Required. Absent means the owner was never asked; `false` means they said no. The two
+ *             are not the same and must not be conflated.
+ *         gstNumber:
+ *           type: string
+ *           example: 123456789RT0001
+ *           description: Nine digits, RT, then four. Spaces, hyphens and lower case are normalised.
+ *         qstNumber:
+ *           type: string
+ *           example: 1234567890TQ0001
+ *           description: Ten digits, TQ, then four.
+ *         declaredAt: { type: string, format: date-time, readOnly: true }
+ *         verifiedAt: { type: string, format: date-time, readOnly: true }
+ *         verificationNote: { type: string, readOnly: true }
+ */

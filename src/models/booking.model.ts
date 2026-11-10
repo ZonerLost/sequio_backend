@@ -193,6 +193,22 @@ export interface IBooking extends Document {
     refundOutstanding?: boolean;
   };
   /**
+   * The owner's tax-registration status when this booking was made.
+   *
+   * **This is the answer to "what happens when the status changes mid-rental": nothing.** An owner
+   * who registers for QST on day three of a ten-day rental did not retroactively make the first two
+   * days a registered transaction, and one who deregisters does not undo the allocation that applied
+   * when the rental was agreed. Same rule as `pricing`: store what was true, never recompute it.
+   *
+   * Absent on every booking made before the owner was ever asked.
+   */
+  ownerTaxRegistration?: {
+    isRegistered?: boolean;
+    gstNumber?: string;
+    qstNumber?: string;
+    snapshotAt?: Date;
+  };
+  /**
    * Where this booking's money actually ended up, after everything that has been refunded.
    *
    * **A sibling of `cancellation` rather than a part of it, and deliberately so.** It is written by
@@ -352,6 +368,14 @@ const BookingSchema = new Schema<IBooking>(
       startsAt: { type: Date },
       hoursBeforeStart: { type: Number },
       refundOutstanding: { type: Boolean },
+    },
+    // Frozen at creation. See the interface: a mid-rental change to the owner's registration must
+    // not alter a booking that was already agreed.
+    ownerTaxRegistration: {
+      isRegistered: { type: Boolean },
+      gstNumber: { type: String },
+      qstNumber: { type: String },
+      snapshotAt: { type: Date },
     },
     // No defaults anywhere here: absent means "nothing has been refunded", and a default would
     // apply to new documents only, saying nothing about the thousands that predate it (DO-NOT #13).

@@ -78,6 +78,57 @@ export class AdminService {
    *
    * Promotion is never blocked, and demoting someone else while another admin remains is fine.
    */
+  /**
+   * Records that an administrator has checked an owner's GST/QST registration — or un-records it.
+   *
+   * **This is a human step and cannot be anything else.** A format check proves a number is shaped
+   * like a registration number; only the Canada Revenue Agency and Revenu Québec can say whether it
+   * exists and belongs to this owner, and neither publishes an API for it. So the code validates
+   * the shape and a person confirms the substance.
+   *
+   * The note is required in both directions. An administrator who un-verifies a registration months
+   * later has a reason, and "verified: false" with no explanation is not something the next person
+   * can act on — the same argument as the required explanation on an owner cancellation.
+   *
+   * Refuses an owner who has not declared anything: there is nothing to verify, and writing
+   * `verifiedAt` onto an empty declaration would make the next reader think they had answered.
+   */
+  async reviewTaxRegistration(
+    userId: string,
+    actorId: string,
+    input: { verified: boolean; note: string }
+  ) {
+    const user = await UserModel.findById(userId).select("taxRegistration firstName lastName");
+    if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
+    if (typeof user.taxRegistration?.isRegistered !== "boolean") {
+      throw new AppError(
+        "This owner has not declared a tax-registration status yet, so there is nothing to verify",
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const updated = await UserModel.findByIdAndUpdate(
+      userId,
+      input.verified
+        ? {
+            $set: {
+              "taxRegistration.verifiedAt": new Date(),
+              "taxRegistration.verifiedBy": new mongoose.Types.ObjectId(actorId),
+              "taxRegistration.verificationNote": input.note,
+            },
+          }
+        : {
+            // The note survives, the verification does not: the record of why it was withdrawn is
+            // the useful half.
+            $set: { "taxRegistration.verificationNote": input.note },
+            $unset: { "taxRegistration.verifiedAt": "", "taxRegistration.verifiedBy": "" },
+          },
+      { returnDocument: "after" }
+    ).select("firstName lastName taxRegistration");
+
+    return updated;
+  }
+
   async updateUserRole(userId: string, role: "user" | "admin", actorId: string) {
     if (role === "user") {
       if (actorId === userId) {

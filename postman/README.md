@@ -77,8 +77,8 @@ body and query example valid against its Joi schema) were `build-collection.cjs`
 not go looking for them.
 
 Until one is written again, a new route is added to this JSON by hand, and its example body is
-checked against its own Joi schema — `scripts/probe-postman-2d.cjs` is the pattern, and it is a
-dozen lines. Adding a route without doing either is how the gap above opened.
+checked against its own Joi schema — `scripts/probe-postman-examples.cjs` does that check for every
+body added by hand so far, and it is a couple of dozen lines. Adding a route without doing either is how the gap above opened.
 
 Descriptions call out the traps — the routes with **no validation** (`PUT /disputes/admin/:id/status`,
 `POST /bookings/quote`, the RevenueCat webhook), the fields that are stored but never read, and the

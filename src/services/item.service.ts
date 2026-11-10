@@ -2,6 +2,11 @@ import { ItemRepository } from "../repository/item.repository";
 import { UserRepository } from "../repository/user.repository";
 import { uploadToS3, deleteFromS3 } from "../helpers/s3.helper";
 import { AppError } from "../middleware/error.middleware";
+import {
+  AGE_REFUSAL_MESSAGE,
+  UNDERAGE_REFUSAL_MESSAGE,
+  ageStatusOf,
+} from "../helpers/compliance.helper";
 import { AddressParts } from "../helpers/geocoding.helper";
 import {
   resolveCoordinates,
@@ -102,6 +107,22 @@ export class ItemService {
     data: Partial<IItem> & { subcategory?: string; itemType?: string }
   ): Promise<IItem> {
     const { subcategory, itemType, ...fields } = data;
+
+    /**
+     * The 18+ check. Listing an item is entering into contracts, same as renting one.
+     *
+     * Only `createItem` is gated, not `updateItem`: an owner who can no longer list must still be
+     * able to manage, pause and correct the listings they already have, and must still be able to
+     * see the bookings on them. Blocking edits would strand renters mid-rental to make a point.
+     * Refuses nobody under the default `AGE_VERIFICATION=off`.
+     */
+    const ownerAge = ageStatusOf(await userRepo.findById(ownerId));
+    if (ownerAge.blocked) {
+      throw new AppError(
+        ownerAge.needsDateOfBirth ? AGE_REFUSAL_MESSAGE : UNDERAGE_REFUSAL_MESSAGE,
+        HTTP_STATUS.FORBIDDEN
+      );
+    }
 
     /**
      * Where the listing belongs, and whether the Prohibited and Restricted Items Policy allows it.

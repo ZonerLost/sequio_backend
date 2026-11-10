@@ -373,6 +373,21 @@ export class AdminController {
    * invented here. An administrator who decides to refund anyway uses
    * `PUT /admin/payments/:id/refund`, which already exists and already records who did it.
    */
+  async reviewTaxRegistration(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = await adminService.reviewTaxRegistration(
+        String(req.params.id),
+        req.user!.userId,
+        { verified: Boolean(req.body.verified), note: String(req.body.note) }
+      );
+      sendSuccess(
+        res,
+        req.body.verified ? "Tax registration verified" : "Tax registration verification removed",
+        user
+      );
+    } catch (err) { next(err); }
+  }
+
   async listRefundRequests(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await refundRequestService.listForAdmin({

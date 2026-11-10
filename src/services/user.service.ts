@@ -12,6 +12,7 @@ import { HTTP_STATUS } from "../config/constants";
 import { ENV } from "../config/env";
 import { REPORT_REASONS, ReportReason } from "../models/user-report.model";
 import { presenceOf } from "../helpers/presence.helper";
+import { ageStatusOf } from "../helpers/compliance.helper";
 
 const userRepo = new UserRepository();
 const otpRepo = new OtpRepository();
@@ -21,7 +22,20 @@ export class UserService {
   async getProfile(userId: string) {
     const user = await userRepo.findById(userId);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
-    return this.sanitizeEmail(user);
+    return this.withCompliance(this.sanitizeEmail(user), user);
+  }
+
+  /**
+   * Adds a `compliance` block so a client knows whether to prompt for a date of birth.
+   *
+   * Served on the profile rather than at a separate endpoint because the app already fetches this
+   * on launch, and a dedicated call would be one more thing for three clients to remember. The
+   * fields are deliberately explicit rather than a single boolean: `needsDateOfBirth` means "ask",
+   * `blocked` means "refuse", and today the first is true for every account while the second is
+   * false for all of them.
+   */
+  private withCompliance(plain: Record<string, unknown>, user: IUser) {
+    return { ...plain, compliance: { age: ageStatusOf(user) } };
   }
 
   private sanitizeEmail(user: IUser) {
@@ -89,6 +103,26 @@ export class UserService {
 
     for (const [key, value] of Object.entries(data)) {
       if (key === "email") continue; // already handled above
+      /**
+       * Flattened to dot paths, like `location`, and for the same reason: assigning the object
+       * would replace the whole subdocument (DO-NOT #3) and take `verifiedAt`, `verifiedBy` and
+       * `verificationNote` with it.
+       *
+       * **Changing the declaration clears any verification**, which is the part worth being
+       * deliberate about. An administrator verified a specific number; carrying that `verifiedAt`
+       * over to a different number the owner typed afterwards would turn a real check into a rubber
+       * stamp, and nothing in the record would show it had happened.
+       */
+      if (key === "taxRegistration" && value && typeof value === "object") {
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          update[`taxRegistration.${k}`] = v;
+        }
+        update["taxRegistration.declaredAt"] = new Date();
+        update["taxRegistration.verifiedAt"] = null;
+        update["taxRegistration.verifiedBy"] = null;
+        update["taxRegistration.verificationNote"] = null;
+        continue;
+      }
       if (key === "location" && value && typeof value === "object") {
         // Marked for geocoding after this loop, so the merge can read what is already stored.
         locationChanged = value as AddressParts & { coordinates?: unknown };
@@ -129,7 +163,9 @@ export class UserService {
 
     const user = await userRepo.updateById(userId, update);
     if (!user) throw new AppError("User not found", HTTP_STATUS.NOT_FOUND);
-    return user;
+    // The same block the profile read carries, so a client that has just supplied a date of birth
+    // sees the prompt disappear without a second request.
+    return this.withCompliance(this.sanitizeEmail(user), user);
   }
 
   async updateProfilePhoto(userId: string, fileBuffer: Buffer, mimeType: string) {

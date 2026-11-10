@@ -112,6 +112,17 @@ export const ENV = {
   OWNER_PAYOUT_HOLD_HOURS: Number(process.env.OWNER_PAYOUT_HOLD_HOURS) || 24,
 
   /**
+   * Which accounts the 18+ requirement applies to: `off`, `new_accounts` or `all`.
+   *
+   * **`off` is the only safe default today.** No account on the platform has a date of birth, and
+   * the deployed app has no field to send one, so requiring it would refuse every new sign-up and
+   * `all` would lock out all 37 existing accounts. See `compliance.helper.ts`.
+   */
+  AGE_VERIFICATION: ["off", "new_accounts", "all"].includes(String(process.env.AGE_VERIFICATION))
+    ? String(process.env.AGE_VERIFICATION)
+    : "off",
+
+  /**
    * Geocoding: turning an address into coordinates.
    *
    * Default provider is OpenStreetMap Nominatim, which needs no key and is the same data the

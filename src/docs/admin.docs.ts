@@ -696,3 +696,57 @@
  *       403:
  *         description: Admin only
  */
+
+
+/**
+ * @swagger
+ * /admin/users/{id}/tax-registration:
+ *   put:
+ *     summary: Verify, or withdraw verification of, an owner's GST/QST registration
+ *     description: >
+ *       **A human step, and it cannot be anything else.** The format of a registration number is
+ *       checked in code; only the Canada Revenue Agency and Revenu Québec can say whether a number
+ *       exists and belongs to this owner, and neither publishes an API for it.
+ *
+ *
+ *       `note` is required in **both** directions. An administrator who withdraws a verification
+ *       months later has a reason, and a bare `verified: false` is not something the next person can
+ *       act on. The note survives a withdrawal; the verification does not.
+ *
+ *
+ *       Refuses an owner who has not declared a status yet (**400**): there is nothing to verify, and
+ *       writing `verifiedAt` onto an empty declaration would make the next reader think they had
+ *       answered. Note also that an owner **re-declaring** clears any verification — carrying it over
+ *       to a different number would turn a real check into a rubber stamp.
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [verified, note]
+ *             properties:
+ *               verified: { type: boolean }
+ *               note:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 500
+ *                 example: Confirmed against the CRA business registry by phone
+ *     responses:
+ *       200:
+ *         description: Recorded
+ *       400:
+ *         description: This owner has not declared a tax-registration status yet
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: User not found
+ */

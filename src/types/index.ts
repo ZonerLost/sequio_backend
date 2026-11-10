@@ -10,6 +10,16 @@ export interface IUser extends Document {
   profilePhoto?: string;
   bio?: string;
   dateOfBirth?: Date;
+  /** See the model: absent means the owner was never asked, not that they said no. */
+  taxRegistration?: {
+    isRegistered?: boolean;
+    gstNumber?: string;
+    qstNumber?: string;
+    declaredAt?: Date;
+    verifiedAt?: Date;
+    verifiedBy?: Types.ObjectId;
+    verificationNote?: string;
+  };
   location?: {
     address?: string;
     city: string;

@@ -267,13 +267,13 @@
                 "register"
               ]
             },
-            "description": "Creates an email account and emails a 6-digit OTP. In development the OTP is also printed to the server log. Save the OTP and use it in *Verify email*.\n\n_Auth: public_",
+            "description": "Creates an email account and emails a 6-digit OTP. In development the OTP is also printed to the server log. Save the OTP and use it in *Verify email*.\n\n_Auth: public_\n\n**dateOfBirth** is optional by default and refused if it says under 18. It becomes required when `AGE_VERIFICATION` is `new_accounts` or `all`, which it is not today — the deployed app has no field to send it, so requiring it would 400 every sign-up.",
             "auth": {
               "type": "noauth"
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"language\": \"en\"\n}",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"language\": \"en\",\n  \"dateOfBirth\": \"1995-06-15\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -916,10 +916,10 @@
                 "profile"
               ]
             },
-            "description": "Partial update — send only the fields you change. Nested `location` keys are merged, not replaced. Changing `email` marks it unverified.\n\n_Auth: bearer_",
+            "description": "Partial update — send only the fields you change. Nested `location` keys are merged, not replaced. Changing `email` marks it unverified.\n\n_Auth: bearer_\n\n**dateOfBirth** is validated now: an under-18 date is refused (and was previously accepted unchecked). This is how an existing account satisfies the 18+ requirement — `compliance.age.needsDateOfBirth` on the profile says when to prompt.\n\n**taxRegistration** is the owner's GST/QST declaration. `isRegistered` is required, and claiming to be registered with no number is refused. Numbers are normalised, so `123 456 789 rt0001` is stored as `123456789RT0001`. `verifiedAt` and friends are read-only here — an owner cannot verify their own registration, and re-declaring clears any verification an administrator had recorded.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"bio\": \"Renting tools around Montreal.\",\n  \"language\": \"en\",\n  \"location\": {\n    \"address\": \"120 Rue Sainte-Catherine\",\n    \"city\": \"Montreal\",\n    \"province\": \"QC\",\n    \"country\": \"Canada\",\n    \"coordinates\": {\n      \"lat\": 45.5019,\n      \"lng\": -73.5674\n    }\n  }\n}",
+              "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"bio\": \"Renting tools around Montreal.\",\n  \"language\": \"en\",\n  \"location\": {\n    \"address\": \"120 Rue Sainte-Catherine\",\n    \"city\": \"Montreal\",\n    \"province\": \"QC\",\n    \"country\": \"Canada\",\n    \"coordinates\": {\n      \"lat\": 45.5019,\n      \"lng\": -73.5674\n    }\n  },\n  \"dateOfBirth\": \"1995-06-15\",\n  \"taxRegistration\": {\n    \"isRegistered\": true,\n    \"gstNumber\": \"123456789RT0001\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5095,6 +5095,36 @@
               ]
             },
             "description": "READ-ONLY, deliberately. What happens when an owner declines an early-return refund is an open question with the client, so no override route exists here. An administrator who decides to refund anyway uses `PUT /admin/payments/:id/refund`."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify tax registration",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verified\": true,\n  \"note\": \"Confirmed against the CRA business registry by phone\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/tax-registration",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{userId}}",
+                "tax-registration"
+              ]
+            },
+            "description": "A HUMAN step, and it cannot be anything else: the format of a registration number is checked in code, but only the CRA and Revenu Quebec can say whether a number exists and belongs to this owner, and neither publishes an API.\n\n`note` is required BOTH ways — an administrator who withdraws a verification months later has a reason, and a bare `verified: false` is not something the next person can act on. The note survives a withdrawal; the verification does not.\n\n400 if the owner has not declared a status yet: there is nothing to verify, and writing `verifiedAt` onto an empty declaration would read as an answer they never gave."
           },
           "response": []
         }
